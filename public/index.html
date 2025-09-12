@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>HangO — Meet, fast.</title>
+	<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+			<header class="nav nav--dock nav--index">
+			<div class="container">
+				<div class="nav-dock">
+					<a href="/" class="brand" aria-label="HangO home">
+						<svg class="logo-mark" width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+							<defs>
+								<linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+									<stop offset="0%" stop-color="#22d3ee"/>
+									<stop offset="50%" stop-color="#a78bfa"/>
+									<stop offset="100%" stop-color="#f472b6"/>
+								</linearGradient>
+							</defs>
+							<rect x="4" y="8" width="40" height="32" rx="10" stroke="url(#g1)" stroke-width="3"/>
+							<circle cx="16" cy="24" r="6" fill="url(#g1)"/>
+							<circle cx="32" cy="24" r="6" stroke="url(#g1)" stroke-width="3" fill="none"/>
+						</svg>
+						<span class="brand__name text-gradient">HangO</span>
+					</a>
+					<button class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="navMenu">
+						<span></span><span></span><span></span>
+					</button>
+					<nav id="navMenu" class="nav-menu">
+						<a class="nav-link" href="/">Home</a>
+						<a class="nav-link" href="/auth.html">Account</a>
+						  <div class="nav-split"></div>
+          
+						<a href="/auth.html" class="btn btn--neon">Get started</a>
+					</nav>
+				</div>
+			</div>
+		</header>
+
+		<main class="fun-bg">
+					<div class="marquee" aria-hidden="true"><div class="marquee__inner"></div></div>
+				<section class="hero">
+							<div class="stripes" aria-hidden="true"></div>
+							<canvas id="bgParticles" class="particles" aria-hidden="true"></canvas>
+							<div class="orbs" aria-hidden="true">
+								<span class="orb orb--a"></span>
+								<span class="orb orb--b"></span>
+								<span class="orb orb--c"></span>
+							</div>
+			<div class="container hero__grid">
+						<div class="hero__copy">
+							<h1 class="text-gradient">Start a hangout.</h1>
+							<p class="hero__yap">Hop in with a code or link. Crisp audio, smooth video, and zero clutter — meet fast and get back to what matters.</p>
+							<div class="signal-rings" aria-hidden="true"><span></span><span></span><span></span></div>
+					<div class="cta">
+						<button id="startMeet" class="btn">Start a meeting</button>
+						<div class="join">
+							<input id="joinCode" class="input" placeholder="Enter code to join" />
+							<button id="joinMeet" class="btn btn--ghost">Join</button>
+						</div>
+					</div>
+          
+				</div>
+							<div class="hero__card">
+								<div class="globe-wrap">
+									<aside class="globe-rail" aria-label="World time">
+										<div class="rail-chip" data-tz="America/Los_Angeles">
+											<div class="rail-chip__city">San Francisco</div>
+											<div class="rail-chip__time" data-time></div>
+										</div>
+										<div class="rail-chip" data-tz="Europe/London">
+											<div class="rail-chip__city">London</div>
+											<div class="rail-chip__time" data-time></div>
+										</div>
+										<div class="rail-chip" data-tz="Asia/Dubai">
+											<div class="rail-chip__city">Dubai</div>
+											<div class="rail-chip__time" data-time></div>
+										</div>
+										<div class="rail-chip" data-tz="Asia/Tokyo">
+											<div class="rail-chip__city">Tokyo</div>
+											<div class="rail-chip__time" data-time></div>
+										</div>
+									</aside>
+									<div class="globe-card">
+										<canvas id="globeCanvas" class="globe-canvas" aria-label="Interactive globe"></canvas>
+									</div>
+								</div>
+							</div>
+			</div>
+      
+			</section>
+
+				<section class="features">
+					<div class="container features__grid">
+						<div class="flip" tabindex="0">
+							<div class="flip__inner">
+								<div class="flip__face flip__front">
+									<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M13 3v8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M21 3l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+									<div class="flip__title">Fast</div>
+								</div>
+								<div class="flip__face flip__back">
+									<p>Start a room in one click. Share the code invite the person from email and many other options to connect with people.</p>
+								</div>
+							</div>
+						</div>
+						<div class="flip" tabindex="0">
+							<div class="flip__inner">
+								<div class="flip__face flip__front">
+									<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
+									<div class="flip__title">Simple</div>
+								</div>
+								<div class="flip__face flip__back">
+									<p>Clean UI. Zero clutter. Focus on the convo.</p>
+								</div>
+							</div>
+						</div>
+						<div class="flip" tabindex="0">
+							<div class="flip__inner">
+								<div class="flip__face flip__front">
+									<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 3l2.4 4.86L20 9.27l-4 3.9.94 5.48L12 16.9l-4.94 1.75L8 13.17 4 9.27l5.6-1.41L12 3z" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+									<div class="flip__title">Polished</div>
+								</div>
+								<div class="flip__face flip__back">
+									<p>Fluid motion and color. Make meetings feel nice.</p>
+								</div>
+							</div>
+						</div>
+					</div>
+				</section>
+	</main>
+
+	<footer class="footer">
+		<div class="container footer__inner">
+			<span class="muted">© <span id="year"></span> HangO</span>
+			<a class="muted" href="/auth.html">Sign up / Login</a>
+		</div>
+	</footer>
+
+	<script src="/app.js"></script>
+		<script src="/globe.js"></script>
+	<script>
+		document.getElementById('year').textContent = new Date().getFullYear();
+	</script>
+  
+</body>
+</html>

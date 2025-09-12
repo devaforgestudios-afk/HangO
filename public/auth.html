@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HangO - Auth</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="nav nav--dock">
+    <div class="container">
+      <div class="nav-dock">
+        <a href="/" class="brand" aria-label="HangO home">
+          <svg class="logo-mark" width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="g1a" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#22d3ee"/>
+              <stop offset="50%" stop-color="#a78bfa"/>
+              <stop offset="100%" stop-color="#f472b6"/>
+            </linearGradient>
+          </defs>
+          <rect x="4" y="8" width="40" height="32" rx="10" stroke="url(#g1a)" stroke-width="3"/>
+          <circle cx="16" cy="24" r="6" fill="url(#g1a)"/>
+          <circle cx="32" cy="24" r="6" stroke="url(#g1a)" stroke-width="3" fill="none"/>
+          </svg>
+          <span class="brand__name text-gradient">HangO</span>
+        </a>
+        <button class="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="navMenu">
+          <span></span><span></span><span></span>
+        </button>
+        <nav id="navMenu" class="nav-menu">
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link" href="/auth.html">Account</a>
+          <div class="nav-split"></div>
+          
+          <a href="/auth.html" class="btn btn--neon">Get started</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <div class="container" style="padding:48px 16px; max-width:720px">
+    <h1>Authentication</h1>
+    <p class="muted">Create an account or log in. Passwords are securely hashed.</p>
+
+    <div class="tabs">
+      <div class="tab active" id="tabSignup">Sign up</div>
+      <div class="tab" id="tabLogin">Login</div>
+    </div>
+
+  <div class="card" id="signupCard" style="margin-top:12px">
+      <form id="signupForm">
+        <label>Username</label>
+        <input id="signupUsername" autocomplete="username" required />
+        <label>Password</label>
+        <div class="row">
+          <input id="signupPassword" type="password" autocomplete="new-password" required />
+          <button type="button" id="toggleSignupPw">Show</button>
+        </div>
+        <label>Avatar URL (optional)</label>
+        <input id="signupAvatar" placeholder="https://..." />
+        <div style="margin-top:12px">
+          <button type="submit">Create account</button>
+        </div>
+      </form>
+    </div>
+
+  <div class="card hidden" id="loginCard" style="margin-top:12px">
+      <form id="loginForm">
+        <label>Username</label>
+        <input id="loginUsername" autocomplete="username" required />
+        <label>Password</label>
+        <div class="row">
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+          <button type="button" id="toggleLoginPw">Show</button>
+        </div>
+        <div style="margin-top:12px">
+          <button type="submit">Login</button>
+        </div>
+      </form>
+    </div>
+
+  <p class="muted" id="authMsg" style="margin-top:12px"></p>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function setTab(which) {
+      const isSignup = which === 'signup';
+      $('tabSignup').classList.toggle('active', isSignup);
+      $('tabLogin').classList.toggle('active', !isSignup);
+      $('signupCard').classList.toggle('hidden', !isSignup);
+      $('loginCard').classList.toggle('hidden', isSignup);
+    }
+    $('tabSignup').onclick = () => setTab('signup');
+    $('tabLogin').onclick = () => setTab('login');
+
+    const togglePw = (inputId, btnId) => {
+      const input = $(inputId); const btn = $(btnId);
+      btn.onclick = () => {
+        const isPw = input.type === 'password';
+        input.type = isPw ? 'text' : 'password';
+        btn.textContent = isPw ? 'Hide' : 'Show';
+      };
+    };
+    togglePw('signupPassword','toggleSignupPw');
+    togglePw('loginPassword','toggleLoginPw');
+
+    $('signupForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const username = $('signupUsername').value.trim();
+      const password = $('signupPassword').value;
+      const avatar = $('signupAvatar').value.trim() || undefined;
+      try {
+        const res = await fetch('/api/user/register', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, avatar })
+        });
+        const data = await res.json();
+        $('authMsg').textContent = data.success ? 'Signup successful! You can log in now.' : (data.error || 'Signup failed');
+        if (data.success) setTab('login');
+      } catch (e) { $('authMsg').textContent = 'Network error'; }
+    };
+
+    $('loginForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const username = $('loginUsername').value.trim();
+      const password = $('loginPassword').value;
+      try {
+        const res = await fetch('/api/user/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        $('authMsg').textContent = data.success ? `Welcome ${data.user.username}!` : (data.error || 'Login failed');
+      } catch (e) { $('authMsg').textContent = 'Network error'; }
+    };
+  </script>
+</body>
+</html>
