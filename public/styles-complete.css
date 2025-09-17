@@ -1,4 +1,6 @@
-  
+/* Complete HangO Stylesheet - Index + Auth Pages */
+
+/* === ROOT VARIABLES === */
 :root {
   --bg: #0f172a;
   --panel: #111827;
@@ -439,7 +441,7 @@ html, body {
 
 .globe-card {
   position: relative;
-  height: 280px;
+  height: 200px;
   border-radius: 12px;
   overflow: hidden;
   background: linear-gradient(135deg, var(--panel), var(--bg));
@@ -630,12 +632,12 @@ html, body {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  background: var(--bg);
+  background: var(--surface-gray);
 }
 
 /* Left Panel - Form */
 .auth-form-panel {
-  background: var(--panel);
+  background: var(--surface-white);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -663,14 +665,14 @@ html, body {
 .brand-name {
   font-size: 1.75rem;
   font-weight: 700;
-  color: var(--brand);
+  color: var(--primary-blue);
 }
 
 /* Form Tabs */
 .form-tabs {
   display: flex;
   gap: 1px;
-  background: var(--line);
+  background: #e2e8f0;
   border-radius: 6px;
   padding: 2px;
   margin-bottom: 2rem;
@@ -683,16 +685,16 @@ html, body {
   padding: 12px 16px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--text-muted);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .tab-button.active {
-  background: var(--panel);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: var(--surface-white);
+  color: #334155;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 /* Tab Content */
@@ -712,12 +714,12 @@ html, body {
 .form-title h1 {
   font-size: 1.875rem;
   font-weight: 700;
-  color: var(--text);
+  color: var(--text-dark);
   margin: 0 0 8px 0;
 }
 
 .form-title p {
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0;
   font-size: 0.875rem;
 }
@@ -738,7 +740,7 @@ html, body {
 
 .form-field label {
   font-size: 0.75rem;
-  color: var(--brand);
+  color: var(--primary-blue);
   font-weight: 600;
   text-transform: lowercase;
 }
@@ -750,23 +752,21 @@ html, body {
 .form-field input {
   width: 100%;
   padding: 12px 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-gray);
   border-radius: 6px;
   font-size: 1rem;
-  background: var(--bg);
-  color: var(--text);
   transition: all 0.2s;
   box-sizing: border-box;
 }
 
 .form-field input:focus {
   outline: none;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
 }
 
 .form-field input::placeholder {
-  color: var(--muted);
+  color: var(--text-light);
 }
 
 /* Password Input */
@@ -781,14 +781,14 @@ html, body {
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: var(--muted);
+  color: #6b7280;
   cursor: pointer;
   padding: 4px;
   font-size: 1rem;
 }
 
 .password-toggle:hover {
-  color: var(--text);
+  color: #374151;
 }
 
 /* Password Strength */
@@ -799,7 +799,7 @@ html, body {
 .strength-bar {
   width: 100%;
   height: 4px;
-  background: var(--line);
+  background: #e5e7eb;
   border-radius: 2px;
   overflow: hidden;
 }
@@ -813,7 +813,7 @@ html, body {
 
 .strength-text {
   font-size: 0.75rem;
-  color: var(--muted);
+  color: #6b7280;
   margin-top: 4px;
   display: block;
 }
@@ -878,7 +878,7 @@ html, body {
   display: flex;
   align-items: center;
   margin: 1.5rem 0;
-  color: var(--muted);
+  color: var(--text-light);
   font-size: 0.875rem;
 }
 
@@ -887,7 +887,7 @@ html, body {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--line);
+  background: #e5e7eb;
 }
 
 .divider span {
@@ -930,7 +930,7 @@ html, body {
 }
 
 .link {
-  color: var(--brand);
+  color: var(--primary-blue);
   text-decoration: none;
   font-size: 0.875rem;
 }
@@ -950,16 +950,16 @@ html, body {
 }
 
 .auth-message.success {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
   display: block;
 }
 
 .auth-message.error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
   display: block;
 }
 
