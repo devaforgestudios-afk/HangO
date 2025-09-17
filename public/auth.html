@@ -39,102 +39,326 @@
     </div>
   </header>
 
-  <div class="container" style="padding:48px 16px; max-width:720px">
-    <h1>Authentication</h1>
-    <p class="muted">Create an account or log in. Passwords are securely hashed.</p>
 
-    <div class="tabs">
-      <div class="tab active" id="tabSignup">Sign up</div>
-      <div class="tab" id="tabLogin">Login</div>
+  <div class="auth-container">
+    <!-- Floating shapes background -->
+    <div class="floating-shapes">
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+      <div class="shape shape-4"></div>
+      <div class="shape shape-5"></div>
     </div>
 
-  <div class="card" id="signupCard" style="margin-top:12px">
-      <form id="signupForm">
-        <label>Username</label>
-        <input id="signupUsername" autocomplete="username" required />
-        <label>Password</label>
-        <div class="row">
-          <input id="signupPassword" type="password" autocomplete="new-password" required />
-          <button type="button" id="toggleSignupPw">Show</button>
+    <!-- Main auth content -->
+    <div class="auth-content">
+      <div class="auth-brand">
+        <div class="brand-icon">
+          <svg width="60" height="60" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#22d3ee"/>
+                <stop offset="50%" stop-color="#a78bfa"/>
+                <stop offset="100%" stop-color="#f472b6"/>
+              </linearGradient>
+            </defs>
+            <rect x="4" y="8" width="40" height="32" rx="10" stroke="url(#brandGrad)" stroke-width="3"/>
+            <circle cx="16" cy="24" r="6" fill="url(#brandGrad)"/>
+            <circle cx="32" cy="24" r="6" stroke="url(#brandGrad)" stroke-width="3" fill="none"/>
+          </svg>
         </div>
-        <label>Avatar URL (optional)</label>
-        <input id="signupAvatar" placeholder="https://..." />
-        <div style="margin-top:12px">
-          <button type="submit">Create account</button>
-        </div>
-      </form>
-    </div>
+        <h1 class="brand-title">HangO</h1>
+        <p class="brand-tagline">Meet • Share • Fun !</p>
+      </div>
 
-  <div class="card hidden" id="loginCard" style="margin-top:12px">
-      <form id="loginForm">
-        <label>Username</label>
-        <input id="loginUsername" autocomplete="username" required />
-        <label>Password</label>
-        <div class="row">
-          <input id="loginPassword" type="password" autocomplete="current-password" required />
-          <button type="button" id="toggleLoginPw">Show</button>
+      <div class="auth-card-modern">
+        <div class="tabs-modern">
+          <button class="tab-modern active" id="tabSignup" data-tab="signup">
+            <span class="tab-icon">👋</span>
+            <span class="tab-text">Sign Up</span>
+          </button>
+          <button class="tab-modern" id="tabLogin" data-tab="login">
+            <span class="tab-icon">🔑</span>
+            <span class="tab-text">Sign In</span>
+          </button>
         </div>
-        <div style="margin-top:12px">
-          <button type="submit">Login</button>
-        </div>
-      </form>
-    </div>
 
-  <p class="muted" id="authMsg" style="margin-top:12px"></p>
+        <!-- Signup Form -->
+        <div class="form-container active" id="signupCard">
+          <div class="form-header">
+            <h2>Create your account</h2>
+            <p>Join thousands of people building amazing connections</p>
+          </div>
+
+          <form id="signupForm" class="modern-form">
+            <div class="input-group">
+              <div class="input-icon">👤</div>
+              <input type="text" id="signupUsername" class="modern-input" placeholder="Choose a username" autocomplete="username" required>
+              <div class="input-border"></div>
+              <small class="input-hint">3-20 characters, letters, numbers, underscores</small>
+            </div>
+
+            <div class="input-group">
+              <div class="input-icon">🔒</div>
+              <input type="password" id="signupPassword" class="modern-input" placeholder="Create a password" autocomplete="new-password" required>
+              <button type="button" class="password-toggle" id="toggleSignupPw">👁️</button>
+              <div class="input-border"></div>
+              <div class="password-strength" id="passwordStrength">
+                <div class="strength-bar">
+                  <div class="strength-fill" id="strengthFill"></div>
+                </div>
+                <span class="strength-text" id="strengthText">Password strength</span>
+              </div>
+            </div>
+
+            <div class="input-group">
+              <div class="input-icon">🖼️</div>
+              <input type="url" id="signupAvatar" class="modern-input" placeholder="Avatar URL (optional)">
+              <div class="input-border"></div>
+              <div class="avatar-gallery" id="avatarGallery">
+                <div class="gallery-label">Or pick one:</div>
+                <div class="avatar-options">
+                  <button type="button" class="avatar-option" data-src="https://i.pravatar.cc/150?img=1"></button>
+                  <button type="button" class="avatar-option" data-src="https://i.pravatar.cc/150?img=2"></button>
+                  <button type="button" class="avatar-option" data-src="https://i.pravatar.cc/150?img=3"></button>
+                  <button type="button" class="avatar-option" data-src="https://i.pravatar.cc/150?img=4"></button>
+                  <button type="button" class="avatar-option" data-src="https://i.pravatar.cc/150?img=5"></button>
+                  <button type="button" class="avatar-option" data-src="https://i.pravatar.cc/150?img=6"></button>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-modern btn-primary">
+              <span>Create Account</span>
+              <div class="btn-shine"></div>
+            </button>
+          </form>
+
+          <div class="form-footer">
+            <div class="motivational-quote" id="motivationalQuote"></div>
+          </div>
+        </div>
+
+        <!-- Login Form -->
+        <div class="form-container" id="loginCard">
+          <div class="form-header">
+            <h2>Welcome back!</h2>
+            <p>Sign in to continue your journey</p>
+          </div>
+
+          <form id="loginForm" class="modern-form">
+            <div class="input-group">
+              <div class="input-icon">👤</div>
+              <input type="text" id="loginUsername" class="modern-input" placeholder="Your username" autocomplete="username" required>
+              <div class="input-border"></div>
+            </div>
+
+            <div class="input-group">
+              <div class="input-icon">🔒</div>
+              <input type="password" id="loginPassword" class="modern-input" placeholder="Your password" autocomplete="current-password" required>
+              <button type="button" class="password-toggle" id="toggleLoginPw">👁️</button>
+              <div class="input-border"></div>
+            </div>
+
+            <button type="submit" class="btn-modern btn-primary">
+              <span>Sign In</span>
+              <div class="btn-shine"></div>
+            </button>
+          </form>
+
+          <div class="form-footer">
+            <a href="#" class="forgot-password">Forgot your password?</a>
+          </div>
+        </div>
+
+        <div class="auth-message" id="authMsg"></div>
+      </div>
+    </div>
   </div>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    function setTab(which) {
-      const isSignup = which === 'signup';
-      $('tabSignup').classList.toggle('active', isSignup);
-      $('tabLogin').classList.toggle('active', !isSignup);
-      $('signupCard').classList.toggle('hidden', !isSignup);
-      $('loginCard').classList.toggle('hidden', isSignup);
+
+    // Tab switching for modern design
+    function setTab(tabName) {
+      const tabs = document.querySelectorAll('.tab-modern');
+      const containers = document.querySelectorAll('.form-container');
+      
+      tabs.forEach(tab => {
+        tab.classList.remove('active');
+      });
+      
+      containers.forEach(container => {
+        container.classList.remove('active');
+      });
+      
+      document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1)).classList.add('active');
+      document.getElementById(tabName + 'Card').classList.add('active');
     }
-    $('tabSignup').onclick = () => setTab('signup');
-    $('tabLogin').onclick = () => setTab('login');
 
-    const togglePw = (inputId, btnId) => {
-      const input = $(inputId); const btn = $(btnId);
-      btn.onclick = () => {
-        const isPw = input.type === 'password';
-        input.type = isPw ? 'text' : 'password';
-        btn.textContent = isPw ? 'Hide' : 'Show';
-      };
-    };
-    togglePw('signupPassword','toggleSignupPw');
-    togglePw('loginPassword','toggleLoginPw');
+    // Add event listeners to tabs
+    $('tabSignup').addEventListener('click', () => setTab('signup'));
+    $('tabLogin').addEventListener('click', () => setTab('login'));
 
-    $('signupForm').onsubmit = async (e) => {
+    // Password toggle functionality
+    function setupPasswordToggle(inputId, toggleId) {
+      const input = $(inputId);
+      const toggle = $(toggleId);
+      
+      toggle.addEventListener('click', () => {
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        toggle.textContent = isPassword ? '🙈' : '👁️';
+      });
+    }
+
+    setupPasswordToggle('signupPassword', 'toggleSignupPw');
+    setupPasswordToggle('loginPassword', 'toggleLoginPw');
+
+    // Password strength meter
+    const strengthFill = $('strengthFill');
+    const strengthText = $('strengthText');
+
+    function calculatePasswordStrength(password) {
+      let score = 0;
+      if (password.length >= 8) score++;
+      if (password.length >= 12) score++;
+      if (/[a-z]/.test(password)) score++;
+      if (/[A-Z]/.test(password)) score++;
+      if (/\d/.test(password)) score++;
+      if (/[^a-zA-Z0-9]/.test(password)) score++;
+      return Math.min(score, 6);
+    }
+
+    function updatePasswordStrength() {
+      const password = $('signupPassword').value;
+      const score = calculatePasswordStrength(password);
+      const percentage = (score / 6) * 100;
+      
+      strengthFill.style.width = percentage + '%';
+      
+      const labels = [
+        'Very Weak',
+        'Weak', 
+        'Fair',
+        'Good',
+        'Strong',
+        'Very Strong',
+        'Excellent'
+      ];
+      
+      strengthText.textContent = password ? labels[score] : 'Password strength';
+    }
+
+    $('signupPassword').addEventListener('input', updatePasswordStrength);
+
+    // Avatar selection
+    const avatarOptions = document.querySelectorAll('.avatar-option');
+    const avatarInput = $('signupAvatar');
+
+    avatarOptions.forEach((option, index) => {
+      const src = option.dataset.src;
+      option.style.backgroundImage = `url(${src})`;
+      
+      option.addEventListener('click', () => {
+        avatarOptions.forEach(opt => opt.classList.remove('selected'));
+        option.classList.add('selected');
+        avatarInput.value = src;
+      });
+    });
+
+    // Motivational quotes
+    const quotes = [
+      "✨ Every expert was once a beginner",
+      "🌟 Your journey starts with a single step",
+      "💫 Believe in yourself and magic happens",
+      "🦋 Growth begins at the end of your comfort zone",
+      "🌈 Be yourself, everyone else is taken",
+      "🚀 Dream big, start small, act now",
+      "💎 You are capable of amazing things",
+      "🌸 Kindness is always the right choice"
+    ];
+
+    let quoteIndex = 0;
+    const quoteElement = $('motivationalQuote');
+
+    function showNextQuote() {
+      if (quoteElement) {
+        quoteElement.style.opacity = '0';
+        setTimeout(() => {
+          quoteElement.textContent = quotes[quoteIndex];
+          quoteElement.style.opacity = '1';
+          quoteIndex = (quoteIndex + 1) % quotes.length;
+        }, 500);
+      }
+    }
+
+    // Show first quote and rotate every 4 seconds
+    showNextQuote();
+    setInterval(showNextQuote, 4000);
+
+    // Form submission
+    function showMessage(text, isSuccess = false) {
+      const authMsg = $('authMsg');
+      authMsg.textContent = text;
+      authMsg.className = 'auth-message ' + (isSuccess ? 'success' : 'error');
+    }
+
+    $('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      
       const username = $('signupUsername').value.trim();
       const password = $('signupPassword').value;
       const avatar = $('signupAvatar').value.trim() || undefined;
+      
       try {
-        const res = await fetch('/api/user/register', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const response = await fetch('/api/user/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password, avatar })
         });
-        const data = await res.json();
-        $('authMsg').textContent = data.success ? 'Signup successful! You can log in now.' : (data.error || 'Signup failed');
-        if (data.success) setTab('login');
-      } catch (e) { $('authMsg').textContent = 'Network error'; }
-    };
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showMessage('🎉 Account created successfully! Welcome to HangO!', true);
+          setTimeout(() => setTab('login'), 2000);
+        } else {
+          showMessage(data.error || 'Signup failed. Please try again.');
+        }
+      } catch (error) {
+        showMessage('Network error. Please check your connection.');
+      }
+    });
 
-    $('loginForm').onsubmit = async (e) => {
+    $('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      
       const username = $('loginUsername').value.trim();
       const password = $('loginPassword').value;
+      
       try {
-        const res = await fetch('/api/user/login', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const response = await fetch('/api/user/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
-        const data = await res.json();
-        $('authMsg').textContent = data.success ? `Welcome ${data.user.username}!` : (data.error || 'Login failed');
-      } catch (e) { $('authMsg').textContent = 'Network error'; }
-    };
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          showMessage(`🎉 Welcome back, ${data.user.username}!`, true);
+          // Redirect to dashboard or home page after login
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1500);
+        } else {
+          showMessage(data.error || 'Login failed. Please check your credentials.');
+        }
+      } catch (error) {
+        showMessage('Network error. Please check your connection.');
+      }
+    });
   </script>
 </body>
 </html>
