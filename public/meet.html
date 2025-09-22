@@ -40,19 +40,37 @@
 
   <main class="container" style="padding:32px 16px">
     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
-      <h1 style="margin:0">Meeting <span id="code"></span></h1>
+      <div>
+        <h1 style="margin:0">Meeting <span id="code"></span></h1>
+        <p id="meetingTitle" style="margin:4px 0 0; color:var(--muted); font-size:0.875rem"></p>
+      </div>
       <div style="display:flex; gap:8px">
         <button id="copy" class="btn btn--ghost">Copy link</button>
         <button id="newCode" class="btn">New code</button>
       </div>
     </div>
 
+    <!-- Connection Status -->
+    <div id="connectionStatus" class="connection-status" style="margin-top:16px">
+      <div class="status-indicator">
+        <div class="status-dot connecting"></div>
+        <span>Connecting to meeting...</span>
+      </div>
+    </div>
+
     <div class="features__grid" style="margin-top:16px">
       <div class="feature" style="display:grid; gap:12px">
-        <h3>Device preview</h3>
+        <h3>Your Camera</h3>
         <div class="preview" id="localPreview">
-          <div class="preview__video" aria-label="Camera preview placeholder"></div>
+          <video id="localVideo" class="preview__video" autoplay muted playsinline></video>
           <canvas id="meter" class="preview__meter" aria-hidden="true"></canvas>
+          <div id="videoPlaceholder" class="video-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="7" width="12" height="10" rx="2" stroke="currentColor" stroke-width="2"/>
+              <path d="M15 10l5-3v10l-5-3v-4Z" fill="currentColor"/>
+            </svg>
+            <p>Camera is off</p>
+          </div>
         </div>
         <div class="controls">
           <button id="btnMic" class="toggle" aria-pressed="true" aria-label="Toggle microphone" title="Mic">
@@ -68,11 +86,23 @@
       </div>
       <div class="feature">
         <h3>Participants</h3>
-        <div id="list" class="muted">Waiting for others…</div>
+        <div id="list" class="muted">
+          <div class="participant-item">
+            <div class="participant-avatar">You</div>
+            <div class="participant-info">
+              <div class="participant-name">You</div>
+              <div class="participant-status">Host</div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="feature" style="grid-column: span 2;">
         <h3>Chat</h3>
-        <div id="chat" style="height:220px; overflow:auto; background:#0b1220; border:1px solid #243040; border-radius:12px; padding:12px" class="muted"></div>
+        <div id="chat" style="height:220px; overflow:auto; background:#0b1220; border:1px solid #243040; border-radius:12px; padding:12px" class="muted">
+          <div class="chat-message system">
+            <span>Meeting started. Share the code to invite others!</span>
+          </div>
+        </div>
         <div style="display:flex; gap:8px; margin-top:8px">
           <input id="msg" class="input" placeholder="Type a message" style="flex:1" />
           <button id="send" class="btn">Send</button>
@@ -98,6 +128,109 @@
         history.replaceState(null, '', url);
       }
       setCode(code);
+
+      // Load meeting settings from localStorage
+      const meetingSettings = JSON.parse(localStorage.getItem('meetingSettings') || '{}');
+      const titleElement = $('meetingTitle');
+      if (titleElement && meetingSettings.title) {
+        titleElement.textContent = meetingSettings.title;
+      }
+
+      // Apply initial device settings
+      if (meetingSettings.enableVideo === false) {
+        const btnCam = $('btnCam');
+        if (btnCam) toggle(btnCam);
+      }
+      if (meetingSettings.enableAudio === false) {
+        const btnMic = $('btnMic');
+        if (btnMic) toggle(btnMic);
+      }
+
+      // Update connection status
+      setTimeout(() => {
+        const statusElement = $('connectionStatus');
+        if (statusElement) {
+          statusElement.innerHTML = `
+            <div class="status-indicator">
+              <div class="status-dot connected"></div>
+              <span>Connected to meeting ${code}</span>
+            </div>
+          `;
+        }
+      }, 1500);
+
+      // WebRTC setup
+      let localStream = null;
+      let isVideoEnabled = meetingSettings.enableVideo !== false;
+      let isAudioEnabled = meetingSettings.enableAudio !== false;
+
+      async function initializeMedia() {
+        try {
+          const constraints = {
+            video: isVideoEnabled,
+            audio: isAudioEnabled
+          };
+
+          localStream = await navigator.mediaDevices.getUserMedia(constraints);
+          const localVideo = $('localVideo');
+          const placeholder = $('videoPlaceholder');
+          
+          if (localVideo && localStream) {
+            localVideo.srcObject = localStream;
+            if (isVideoEnabled) {
+              localVideo.style.display = 'block';
+              if (placeholder) placeholder.style.display = 'none';
+            } else {
+              localVideo.style.display = 'none';
+              if (placeholder) placeholder.style.display = 'flex';
+            }
+          }
+
+          // Update button states
+          updateControlStates();
+          
+        } catch (error) {
+          console.error('Error accessing media devices:', error);
+          showMediaError(error);
+        }
+      }
+
+      function updateControlStates() {
+        const btnMic = $('btnMic');
+        const btnCam = $('btnCam');
+        
+        if (btnMic) {
+          btnMic.setAttribute('aria-pressed', isAudioEnabled);
+          btnMic.classList.toggle('disabled', !isAudioEnabled);
+        }
+        
+        if (btnCam) {
+          btnCam.setAttribute('aria-pressed', isVideoEnabled);
+          btnCam.classList.toggle('disabled', !isVideoEnabled);
+        }
+      }
+
+      function showMediaError(error) {
+        const statusElement = $('connectionStatus');
+        if (statusElement) {
+          let errorMessage = 'Unable to access camera/microphone';
+          if (error.name === 'NotAllowedError') {
+            errorMessage = 'Camera/microphone access denied. Please allow permissions.';
+          } else if (error.name === 'NotFoundError') {
+            errorMessage = 'No camera/microphone found.';
+          }
+          
+          statusElement.innerHTML = `
+            <div class="status-indicator">
+              <div class="status-dot disconnected"></div>
+              <span>${errorMessage}</span>
+            </div>
+          `;
+        }
+      }
+
+      // Initialize media when page loads
+      initializeMedia();
 
       $('copy').onclick = async () => {
         const share = `${location.origin}/meet.html?code=${encodeURIComponent(getCode())}`;
@@ -150,8 +283,41 @@
       let t = 0; function tick(){ t+=0.08; const lv = 0.15 + (Math.sin(t)+1)/2 * 0.75; drawMeter(lv); requestAnimationFrame(tick); } tick();
 
       function toggle(btn){
-        const val = btn.getAttribute('aria-pressed') === 'true';
-        btn.setAttribute('aria-pressed', String(!val));
+        const isPressed = btn.getAttribute('aria-pressed') === 'true';
+        const newState = !isPressed;
+        btn.setAttribute('aria-pressed', String(newState));
+        btn.classList.toggle('disabled', !newState);
+        
+        // Handle actual media stream controls
+        if (btn.id === 'btnMic' && localStream) {
+          const audioTracks = localStream.getAudioTracks();
+          audioTracks.forEach(track => track.enabled = newState);
+          isAudioEnabled = newState;
+        } else if (btn.id === 'btnCam' && localStream) {
+          const videoTracks = localStream.getVideoTracks();
+          videoTracks.forEach(track => track.enabled = newState);
+          isVideoEnabled = newState;
+          
+          const localVideo = $('localVideo');
+          const placeholder = $('videoPlaceholder');
+          if (localVideo && placeholder) {
+            if (newState) {
+              localVideo.style.display = 'block';
+              placeholder.style.display = 'none';
+            } else {
+              localVideo.style.display = 'none';
+              placeholder.style.display = 'flex';
+            }
+          }
+        } else if (btn.id === 'btnScreen') {
+          // Screen share functionality (placeholder)
+          if (newState) {
+            // Would implement screen sharing here
+            console.log('Screen share started');
+          } else {
+            console.log('Screen share stopped');
+          }
+        }
       }
       btnMic.onclick = ()=> toggle(btnMic);
       btnCam.onclick = ()=> toggle(btnCam);

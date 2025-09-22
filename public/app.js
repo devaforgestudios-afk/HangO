@@ -4,7 +4,18 @@
   const start = document.getElementById('startMeet');
   const join = document.getElementById('joinMeet');
   const input = document.getElementById('joinCode');
-  const partyBtn = null;
+  const quickJoin = document.getElementById('quickJoin');
+  const scheduleMeet = document.getElementById('scheduleMeet');
+  
+  // Modal elements
+  const modal = document.getElementById('meetingModal');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const closeModal = document.getElementById('closeModal');
+  const generateCode = document.getElementById('generateCode');
+  const createMeeting = document.getElementById('createMeeting');
+  const cancelMeeting = document.getElementById('cancelMeeting');
+  const meetingCodeInput = document.getElementById('meetingCode');
+  const meetingTitleInput = document.getElementById('meetingTitle');
 
   function randomCode(){ return Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
@@ -19,22 +30,139 @@
 
   function confetti(){ /* removed emoji confetti for a cleaner look */ }
 
+  // Modal functionality
+  function showModal() {
+    if (modal) {
+      modal.style.display = 'flex';
+      if (meetingCodeInput) meetingCodeInput.value = randomCode();
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function hideModal() {
+    if (modal) {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+  }
+
+  // Enhanced meeting creation
   if (start){
     start.onclick = () => {
-      const code = randomCode();
-      toast('New meeting created');
+      showModal();
+    };
+  }
+
+  // Modal event listeners
+  if (closeModal) closeModal.onclick = hideModal;
+  if (cancelMeeting) cancelMeeting.onclick = hideModal;
+  if (modalOverlay) modalOverlay.onclick = hideModal;
+
+  if (generateCode && meetingCodeInput) {
+    generateCode.onclick = () => {
+      meetingCodeInput.value = randomCode();
+    };
+  }
+
+  if (createMeeting) {
+    createMeeting.onclick = () => {
+      const code = meetingCodeInput?.value || randomCode();
+      const title = meetingTitleInput?.value?.trim();
+      const enableVideo = document.getElementById('enableVideo')?.checked;
+      const enableAudio = document.getElementById('enableAudio')?.checked;
+      const allowScreenShare = document.getElementById('allowScreenShare')?.checked;
+      
+      // Store meeting preferences in localStorage for the meeting page
+      const meetingSettings = {
+        title: title || 'HangO Meeting',
+        enableVideo,
+        enableAudio,
+        allowScreenShare
+      };
+      localStorage.setItem('meetingSettings', JSON.stringify(meetingSettings));
+      
+      toast(title ? `Creating "${title}"` : 'New meeting created');
       confetti();
+      hideModal();
+      
+      setTimeout(() => {
+        window.location.href = `/meet.html?code=${encodeURIComponent(code)}`;
+      }, 500);
+    };
+  }
+
+  // Quick join functionality
+  if (quickJoin) {
+    quickJoin.onclick = () => {
+      // Generate a random code and join immediately
+      const code = randomCode();
+      toast(`Quick joining ${code}`);
       window.location.href = `/meet.html?code=${encodeURIComponent(code)}`;
+    };
+  }
+
+  // Schedule meeting (placeholder for future functionality)
+  if (scheduleMeet) {
+    scheduleMeet.onclick = () => {
+      toast('Schedule feature coming soon!');
     };
   }
 
   if (join){
     join.onclick = () => {
       const code = (input?.value || '').trim().toUpperCase();
-      if (!code) { if (msg) msg.textContent = 'Enter a code first'; toast('Enter a code first'); return; }
-      toast(`Joining ${code}`);
-      window.location.href = `/meet.html?code=${encodeURIComponent(code)}`;
+      if (!code) { 
+        if (msg) msg.textContent = 'Enter a code first';
+        toast('Please enter a meeting code');
+        input?.focus();
+        return; 
+      }
+      
+      // Validate code format (6-8 characters, alphanumeric)
+      if (!/^[A-Z0-9]{3,8}$/.test(code)) {
+        toast('Invalid code format. Use 3-8 letters/numbers.');
+        input?.focus();
+        return;
+      }
+      
+      // Show joining feedback
+      const originalText = join.textContent;
+      join.textContent = 'Joining...';
+      join.disabled = true;
+      
+      toast(`Joining meeting ${code}`);
+      
+      // Simulate validation delay (in real app, this would be an API call)
+      setTimeout(() => {
+        window.location.href = `/meet.html?code=${encodeURIComponent(code)}`;
+      }, 800);
     };
+  }
+
+  // Enhanced input handling
+  if (input) {
+    input.addEventListener('input', (e) => {
+      // Auto-format and validate as user types
+      let value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (value.length > 8) value = value.slice(0, 8);
+      e.target.value = value;
+      
+      // Enable/disable join button based on valid input
+      if (join) {
+        join.disabled = value.length < 3;
+      }
+    });
+
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && join && !join.disabled) {
+        join.click();
+      }
+    });
+
+    // Auto-focus and select all on page load
+    if (input.value) {
+      input.select();
+    }
   }
 
   // Glow button removed

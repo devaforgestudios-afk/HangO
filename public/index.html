@@ -55,10 +55,14 @@
 							<p class="hero__yap">Hop in with a code or link. Crisp audio, smooth video, and zero clutter — meet fast and get back to what matters.</p>
 							<div class="signal-rings" aria-hidden="true"><span></span><span></span><span></span></div>
 					<div class="cta">
-						<button id="startMeet" class="btn">Start a meeting</button>
+						<button id="startMeet" class="btn btn--neon">Start a meeting</button>
 						<div class="join">
 							<input id="joinCode" class="input" placeholder="Enter code to join" />
 							<button id="joinMeet" class="btn btn--ghost">Join</button>
+						</div>
+						<div class="quick-actions">
+							<button id="scheduleMeet" class="btn btn--ghost">Schedule later</button>
+							<button id="quickJoin" class="btn btn--ghost">Quick join</button>
 						</div>
 					</div>
           
@@ -137,6 +141,53 @@
 			<a class="muted" href="/auth.html">Sign up / Login</a>
 		</div>
 	</footer>
+
+	<!-- Meeting Creation Modal -->
+	<div id="meetingModal" class="modal" style="display: none;">
+		<div class="modal-overlay" id="modalOverlay"></div>
+		<div class="modal-content">
+			<div class="modal-header">
+				<h2>Create a New Meeting</h2>
+				<button id="closeModal" class="modal-close">&times;</button>
+			</div>
+			<div class="modal-body">
+				<div class="form-field">
+					<label for="meetingTitle">Meeting Title (Optional)</label>
+					<input type="text" id="meetingTitle" class="input" placeholder="My Awesome Meeting" />
+				</div>
+				
+				<div class="form-field">
+					<label for="meetingCode">Meeting Code</label>
+					<div class="code-input-group">
+						<input type="text" id="meetingCode" class="input" readonly />
+						<button id="generateCode" class="btn btn--ghost">Generate New</button>
+					</div>
+				</div>
+
+				<div class="form-field">
+					<label>Meeting Options</label>
+					<div class="checkbox-group">
+						<label class="checkbox-label">
+							<input type="checkbox" id="enableVideo" checked />
+							<span>Start with video on</span>
+						</label>
+						<label class="checkbox-label">
+							<input type="checkbox" id="enableAudio" checked />
+							<span>Start with audio on</span>
+						</label>
+						<label class="checkbox-label">
+							<input type="checkbox" id="allowScreenShare" checked />
+							<span>Allow screen sharing</span>
+						</label>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button id="cancelMeeting" class="btn btn--ghost">Cancel</button>
+				<button id="createMeeting" class="btn btn--neon">Create Meeting</button>
+			</div>
+		</div>
+	</div>
 
 	<script src="/app.js"></script>
 		<script src="/globe.js"></script>

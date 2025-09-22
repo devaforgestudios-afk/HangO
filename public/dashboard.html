@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HangO Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    body {
+      background: linear-gradient(120deg, #232946 0%, #4f5d75 100%);
+      min-height: 100vh;
+      margin: 0;
+      font-family: 'Inter', Arial, sans-serif;
+      color: #fff;
+    }
+    .dashboard-container {
+      max-width: 1100px;
+      margin: 48px auto 0;
+      padding: 32px 24px;
+      background: rgba(34, 41, 69, 0.92);
+      border-radius: 2rem;
+      box-shadow: 0 8px 48px 0 #23294655;
+      display: flex;
+      gap: 40px;
+    }
+    .dashboard-sidebar {
+      flex: 0 0 220px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      border-right: 1.5px solid #4f5d75;
+      padding-right: 32px;
+    }
+    .dashboard-avatar {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid #a78bfa;
+      object-fit: cover;
+      margin-bottom: 8px;
+    }
+    .dashboard-username {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #a5b4fc;
+      margin-bottom: 2px;
+    }
+    .dashboard-email {
+      font-size: 1rem;
+      color: #bfc9e0;
+      margin-bottom: 12px;
+    }
+    .dashboard-actions button {
+      display: block;
+      width: 100%;
+      margin: 10px 0;
+      padding: 12px 0;
+      border-radius: 1rem;
+      border: none;
+      background: linear-gradient(90deg, #a5b4fc 0%, #f472b6 100%);
+      color: #fff;
+      font-weight: 600;
+      font-size: 1.05rem;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s;
+      box-shadow: 0 2px 12px 0 #a5b4fa22;
+    }
+    .dashboard-actions button:hover {
+      background: linear-gradient(90deg, #f472b6 0%, #a5b4fc 100%);
+      box-shadow: 0 4px 24px 0 #f472b644;
+    }
+    .dashboard-main {
+      flex: 1 1 0;
+      padding-left: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    .dashboard-welcome {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    .dashboard-stats {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: rgba(165, 180, 252, 0.08);
+      border-radius: 1.2rem;
+      padding: 18px 32px;
+      min-width: 140px;
+      text-align: center;
+      box-shadow: 0 2px 12px 0 #a5b4fa22;
+    }
+    .stat-label {
+      font-size: 1rem;
+      color: #bfc9e0;
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: #f472b6;
+    }
+    .dashboard-section-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #a5b4fc;
+      margin-bottom: 10px;
+    }
+    .dashboard-list {
+      background: rgba(165, 180, 252, 0.06);
+      border-radius: 1rem;
+      padding: 18px 20px;
+      min-height: 80px;
+      color: #e0e7ff;
+      font-size: 1.05rem;
+    }
+    @media (max-width: 900px) {
+      .dashboard-container {
+        flex-direction: column;
+        padding: 18px 4vw;
+        gap: 24px;
+      }
+      .dashboard-sidebar {
+        flex-direction: row;
+        border-right: none;
+        border-bottom: 1.5px solid #4f5d75;
+        padding-right: 0;
+        padding-bottom: 18px;
+        gap: 18px;
+        justify-content: flex-start;
+      }
+      .dashboard-main {
+        padding-left: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="nav nav--dock">
+    <div class="container">
+      <div class="nav-dock">
+        <a href="/" class="brand" aria-label="HangO home">
+          <svg class="logo-mark" width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="g1a" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#22d3ee"/>
+                <stop offset="50%" stop-color="#a78bfa"/>
+                <stop offset="100%" stop-color="#f472b6"/>
+              </linearGradient>
+            </defs>
+            <rect x="4" y="8" width="40" height="32" rx="10" stroke="url(#g1a)" stroke-width="3"/>
+            <circle cx="16" cy="24" r="6" fill="url(#g1a)"/>
+            <circle cx="32" cy="24" r="6" stroke="url(#g1a)" stroke-width="3" fill="none"/>
+          </svg>
+          <span class="brand__name text-gradient">HangO</span>
+        </a>
+        <nav class="nav-menu">
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link" href="/dashboard.html">Dashboard</a>
+          <a class="nav-link" href="/auth.html">Account</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <div class="dashboard-container">
+    <aside class="dashboard-sidebar">
+      <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=Felix&size=150" alt="User Avatar" class="dashboard-avatar" id="userAvatar"/>
+      <div class="dashboard-username" id="userName">User</div>
+      <div class="dashboard-email" id="userEmail">user@email.com</div>
+      <div class="dashboard-actions">
+        <button onclick="window.location.href='/meet.html'">Create Meeting</button>
+        <button onclick="window.location.href='/meet.html'">Join Meeting</button>
+        <button onclick="alert('Profile editing coming soon!')">Edit Profile</button>
+      </div>
+    </aside>
+    <main class="dashboard-main">
+      <div>
+        <div class="dashboard-welcome" id="welcomeMsg">Welcome, User!</div>
+        <div class="dashboard-stats">
+          <div class="stat-card">
+            <div class="stat-label">Meetings</div>
+            <div class="stat-value" id="statMeetings">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Connections</div>
+            <div class="stat-value" id="statConnections">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Hours</div>
+            <div class="stat-value" id="statHours">0</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="dashboard-section-title">Recent Meetings</div>
+        <div class="dashboard-list" id="recentMeetings">
+          No recent meetings yet.
+        </div>
+      </div>
+      <div>
+        <div class="dashboard-section-title">Upcoming Events</div>
+        <div class="dashboard-list" id="upcomingEvents">
+          No upcoming events.
+        </div>
+      </div>
+    </main>
+  </div>
+  <script>
+    // Example: Fetch user data from backend (replace with your real API)
+    async function loadDashboard() {
+      try {
+        const res = await fetch('/api/user/dashboard');
+        if (!res.ok) throw new Error('Not logged in');
+        const data = await res.json();
+        document.getElementById('userName').textContent = data.full_name || data.username || 'User';
+        document.getElementById('userEmail').textContent = data.email || '';
+        document.getElementById('welcomeMsg').textContent = `Welcome, ${data.full_name || data.username || 'User'}!`;
+        document.getElementById('userAvatar').src = data.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix&size=150";
+        document.getElementById('statMeetings').textContent = data.stats?.meetings || 0;
+        document.getElementById('statConnections').textContent = data.stats?.connections || 0;
+        document.getElementById('statHours').textContent = data.stats?.hours || 0;
+        document.getElementById('recentMeetings').textContent = (data.recentMeetings && data.recentMeetings.length)
+          ? data.recentMeetings.map(m => `${m.title} (${m.date})`).join('\n')
+          : 'No recent meetings yet.';
+        document.getElementById('upcomingEvents').textContent = (data.upcomingEvents && data.upcomingEvents.length)
+          ? data.upcomingEvents.map(e => `${e.title} (${e.date})`).join('\n')
+          : 'No upcoming events.';
+      } catch (err) {
+        document.getElementById('welcomeMsg').textContent = "Please log in to view your dashboard.";
+      }
+    }
+    loadDashboard();
+  </script>
+</body>
+</html>
