@@ -5,7 +5,7 @@ const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const AirtableService = require('./services/AirtableService');
-const { sendVerificationEmail, sendWelcomeEmail } = require('./services/EmailService');
+const { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetEmail } = require('./services/EmailService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -187,6 +187,124 @@ app.get('/api/user/dashboard', (req, res) => {
   });
 });
 
+// Forgot password endpoint
+app.post('/api/user/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ 
+        error: 'Email is required' 
+      });
+    }
+
+    // Generate reset token
+    const resetData = await airtable.generatePasswordResetToken(email.trim().toLowerCase());
+    
+    // Create reset URL (adjust domain in production)
+    const resetUrl = `http://localhost:3000/reset-password?token=${resetData.token}`;
+    
+    // Send password reset email
+    await sendPasswordResetEmail(resetData.user.email, resetData.user.username, resetUrl);
+    
+    console.log('✅ Password reset email sent to:', email);
+    
+    res.json({ 
+      success: true, 
+      message: 'Password reset instructions have been sent to your email address.' 
+    });
+    
+  } catch (error) {
+    console.error('❌ Forgot password error:', error);
+    
+    // Check if it's a "user not found" error
+    if (error.message && error.message.includes('No account found with this email address')) {
+      return res.status(404).json({ 
+        error: error.message
+      });
+    }
+    
+    // Check if it's a database setup error
+    if (error.message && error.message.includes('Password reset requires database setup')) {
+      return res.status(503).json({ 
+        error: error.message
+      });
+    }
+    
+    // For other errors, return generic message
+    res.status(500).json({ 
+      error: 'An error occurred while processing your request. Please try again later.' 
+    });
+  }
+});
+
+// Verify reset token endpoint
+app.get('/api/user/verify-reset-token/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const user = await airtable.verifyPasswordResetToken(token);
+    
+    res.json({ 
+      success: true, 
+      user: {
+        email: user.email,
+        username: user.username
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Token verification error:', error);
+    res.status(400).json({ 
+      error: error.message || 'Invalid or expired reset token' 
+    });
+  }
+});
+
+// Reset password endpoint
+app.post('/api/user/reset-password', async (req, res) => {
+  try {
+    const { token, password, confirmPassword } = req.body;
+
+    if (!token || !password || !confirmPassword) {
+      return res.status(400).json({ 
+        error: 'All fields are required' 
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ 
+        error: 'Passwords do not match' 
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        error: 'Password must be at least 6 characters long' 
+      });
+    }
+
+    // Reset the password
+    const user = await airtable.resetPasswordWithToken(token, password);
+    
+    console.log('✅ Password reset completed for:', user.email);
+    
+    res.json({ 
+      success: true, 
+      message: 'Password has been reset successfully. You can now login with your new password.',
+      user: {
+        email: user.email,
+        username: user.username
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Password reset error:', error);
+    res.status(400).json({ 
+      error: error.message || 'Failed to reset password' 
+    });
+  }
+});
+
 app.get('/health', async (req, res) => {
   const airtableConnected = await airtable.testConnection();
   res.json({
@@ -201,23 +319,42 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Serve reset password page
+app.get('/reset-password', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
+});
+
 const startServer = async () => {
   try {
-    console.log(' Starting HangO server with Airtable...');
+    console.log('🚀 Starting HangO server with Airtable...');
     
     const airtableConnected = await airtable.testConnection();
+    let passwordResetReady = false;
+    
     if (!airtableConnected) {
-      console.log('  Airtable not connected. Please check your API key and Base ID.');
+      console.log('❌ Airtable not connected. Please check your API key and Base ID.');
+    } else {
+      console.log('✅ Airtable connection successful');
+      
+      // Check if password reset fields are configured
+      passwordResetReady = await airtable.checkPasswordResetFields();
+      if (!passwordResetReady) {
+        console.log('⚠️  Password reset feature requires additional setup (see instructions above)');
+      } else {
+        console.log('✅ Password reset feature is ready');
+      }
     }
     
     app.listen(PORT, () => {
-      console.log(`🌐 Server running at http://localhost:${PORT}`);
-      console.log(`💾 Database: ${airtableConnected ? 'Airtable Connected' : 'Airtable Disconnected'}`);
+      console.log('');
+      console.log('🌐 Server running at http://localhost:' + PORT);
+      console.log('💾 Database: ' + (airtableConnected ? 'Airtable Connected ✅' : 'Airtable Disconnected ❌'));
+      console.log('🔐 Password Reset: ' + (passwordResetReady ? 'Ready ✅' : 'Setup Required ⚠️'));
       console.log('✨ HangO is ready for meetings!');
+      console.log('');
       
       if (!airtableConnected) {
-        console.log('');
-        console.log(' To connect Airtable:');
+        console.log('📋 To connect Airtable:');
         console.log('1. Add AIRTABLE_API_KEY to your .env file');
         console.log('2. Add AIRTABLE_BASE_ID to your .env file');
         console.log('3. Create a "Users" table in your Airtable base');

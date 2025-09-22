@@ -91,14 +91,17 @@ passport.use(new GoogleStrategy({
     }
     
     // Create new user with email duplicate checking
+    // Note: Phone number collection removed due to Google verification requirements
     const userData = {
       username: profile.emails[0].value.split('@')[0], // Use email prefix as username
       full_name: profile.displayName,
       email: profile.emails[0].value,
+      phone: '', // Will be collected during profile completion
       avatar_url: profile.photos?.[0]?.value || '',
       provider: 'google',
       provider_id: profile.id,
-      is_verified: true // OAuth users are automatically verified
+      is_verified: true, // OAuth users are automatically verified
+      profile_completed: false // Flag to require profile completion
     };
     
     try {
@@ -191,7 +194,9 @@ router.get('/github/callback',
   }
 );
 
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+router.get('/google', passport.authenticate('google', { 
+  scope: ['profile', 'email'] 
+}));
 
 router.get('/google/callback',
   (req, res, next) => {

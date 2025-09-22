@@ -138,7 +138,7 @@ class AirtableService {
 
   // Create OAuth user (GitHub/Google) with email duplicate prevention
   async createOAuthUser(userData) {
-    const { username, full_name, email, avatar_url, provider, provider_id, is_verified } = userData;
+    const { username, full_name, email, phone, avatar_url, provider, provider_id, is_verified, profile_completed } = userData;
     
     try {
       // First, check if user already exists by provider ID (exact same account)
@@ -180,11 +180,12 @@ class AirtableService {
         full_name: full_name || username,
         username: username,
         email: email || '',
-        phone: '',
+        phone: phone || '', // Will be collected during profile completion
         is_verified: is_verified || true,
         password_hash: '', // OAuth users don't have passwords
         verification_token: '',
         created_at: new Date().toISOString()
+        // Note: profile_completed field can be added to Airtable if needed
       };
 
       // Add optional OAuth fields only if they exist in your Airtable schema
@@ -400,6 +401,163 @@ class AirtableService {
         console.error('❌ Please create the Users table with required fields in your Airtable base');
         console.error('📝 Required fields: username, email, phone, full_name, password_hash');
       }
+      return false;
+    }
+  }
+
+  // Generate password reset token
+  async generatePasswordResetToken(email) {
+    try {
+      // First check if user exists
+      const existingUser = await this.findUserByEmail(email);
+      if (!existingUser) {
+        console.log('❌ Password reset attempted for non-existent email:', email);
+        throw new Error('No account found with this email address. Please check your email or create a new account.');
+      }
+
+      // Generate secure reset token (random 32 bytes as hex)
+      const crypto = require('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+      try {
+        // Update the user record with reset token and expiration
+        await this.usersTable.update(existingUser.id, {
+          'reset_token': resetToken,
+          'reset_expires': resetExpires.toISOString()
+        });
+        
+        console.log('✅ Password reset token generated for:', email);
+        return {
+          token: resetToken,
+          user: {
+            id: existingUser.id,
+            email: existingUser.email,
+            username: existingUser.username
+          }
+        };
+      } catch (updateError) {
+        if (updateError.message && updateError.message.includes('Unknown field name')) {
+          console.error('❌ Missing required Airtable fields for password reset');
+          console.error('📋 Please add these fields to your Users table in Airtable:');
+          console.error('   1. reset_token (Single line text)');
+          console.error('   2. reset_expires (Date with time)');
+          throw new Error('Password reset requires database setup. Please add "reset_token" (Single line text) and "reset_expires" (Date) fields to your Users table in Airtable.');
+        }
+        throw updateError;
+      }
+    } catch (error) {
+      console.error('❌ Error generating reset token:', error.message);
+      throw error;
+    }
+  }
+
+  // Verify password reset token
+  async verifyPasswordResetToken(token) {
+    try {
+      const records = await this.usersTable.select({
+        filterByFormula: `{reset_token} = '${token}'`
+      }).firstPage();
+
+      if (records.length === 0) {
+        throw new Error('Invalid or expired reset token');
+      }
+
+      const user = records[0];
+      
+      if (!user.fields.reset_expires) {
+        throw new Error('Invalid reset token - no expiration found');
+      }
+      
+      const resetExpires = new Date(user.fields.reset_expires);
+      
+      if (resetExpires < new Date()) {
+        throw new Error('Reset token has expired. Please request a new password reset.');
+      }
+
+      return {
+        id: user.id,
+        email: user.fields.email,
+        username: user.fields.username
+      };
+    } catch (error) {
+      if (error.message && error.message.includes('Unknown field name')) {
+        console.error('❌ Missing required Airtable fields for password reset');
+        console.error('📋 Please add these fields to your Users table in Airtable:');
+        console.error('   1. reset_token (Single line text)');
+        console.error('   2. reset_expires (Date with time)');
+        throw new Error('Password reset requires database setup. Please add "reset_token" (Single line text) and "reset_expires" (Date) fields to your Users table in Airtable.');
+      }
+      console.error('❌ Error verifying reset token:', error.message);
+      throw error;
+    }
+  }
+
+  // Reset user password with token
+  async resetPasswordWithToken(token, newPassword) {
+    try {
+      // Verify the token first
+      const user = await this.verifyPasswordResetToken(token);
+      
+      // Hash the new password properly using bcrypt
+      const bcrypt = require('bcryptjs');
+      const saltRounds = 12;
+      const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+      console.log('🔐 Updating password hash for user:', user.email);
+
+      // Update the user with new hashed password and clear reset fields
+      await this.usersTable.update(user.id, {
+        'password_hash': hashedPassword,
+        'reset_token': null,
+        'reset_expires': null
+      });
+
+      console.log('✅ Password reset successfully for:', user.email);
+      return user;
+    } catch (error) {
+      if (error.message && error.message.includes('Unknown field name')) {
+        console.error('❌ Missing required Airtable fields for password reset');
+        console.error('📋 Please add these fields to your Users table in Airtable:');
+        console.error('   1. reset_token (Single line text)');
+        console.error('   2. reset_expires (Date with time)');
+        throw new Error('Password reset requires database setup. Please add "reset_token" (Single line text) and "reset_expires" (Date) fields to your Users table in Airtable.');
+      }
+      console.error('❌ Error resetting password:', error.message);
+      throw error;
+    }
+  }
+
+  // Check if password reset fields exist in Airtable
+  async checkPasswordResetFields() {
+    try {
+      // Try to select with the required fields to see if they exist
+      const records = await this.usersTable.select({
+        maxRecords: 1,
+        fields: ['username', 'reset_token', 'reset_expires']
+      }).firstPage();
+      
+      console.log('✅ Password reset fields are configured in Airtable');
+      return true;
+    } catch (error) {
+      if (error.message && error.message.includes('Unknown field name')) {
+        console.error('❌ Password reset fields missing from Airtable');
+        console.error('📋 SETUP REQUIRED: Add these fields to your Users table:');
+        console.error('   1. Field Name: reset_token');
+        console.error('      Type: Single line text');
+        console.error('   2. Field Name: reset_expires');
+        console.error('      Type: Date');
+        console.error('      ✓ Include a time field: Yes');
+        console.error('');
+        console.error('🔗 Instructions:');
+        console.error('   1. Open your Airtable base');
+        console.error('   2. Go to the Users table');
+        console.error('   3. Click the + button to add new fields');
+        console.error('   4. Create both fields as specified above');
+        console.error('   5. Restart the server');
+        return false;
+      }
+      console.error('❌ Error checking password reset fields:', error.message);
       return false;
     }
   }
