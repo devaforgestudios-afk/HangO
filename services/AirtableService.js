@@ -25,7 +25,10 @@ class AirtableService {
 
   // Create new user
   async createUser(userData) {
-    const { fullName, username, email, phone, password, avatar } = userData;
+    const { fullName, username, email, phone, password, avatar, avatar_url } = userData;
+    
+    // Use avatar_url if provided, otherwise fall back to avatar for backward compatibility
+    const finalAvatarUrl = avatar_url || avatar || '';
     const { v4: uuidv4 } = require('uuid');
     // Validation
     if (!fullName || fullName.trim().length < 2) {
@@ -72,7 +75,9 @@ class AirtableService {
             email,
             phone: phone || '',
             password_hash: passwordHash,
-            avatar: avatar || '',
+            avatar_url: finalAvatarUrl,
+            provider: 'email', // Regular registration uses email provider
+            provider_id: '', // Email users don't have external provider IDs
             is_verified: false,
             verification_token: verificationToken,
             created_at: new Date().toISOString()
@@ -86,7 +91,9 @@ class AirtableService {
         username: newUser.fields.username,
         email: newUser.fields.email,
         phone: newUser.fields.phone,
-        avatar: newUser.fields.avatar,
+        avatar_url: newUser.fields.avatar_url,
+        provider: newUser.fields.provider,
+        provider_id: newUser.fields.provider_id,
         is_verified: newUser.fields.is_verified,
         verification_token: newUser.fields.verification_token,
         created_at: newUser.fields.created_at
@@ -122,7 +129,7 @@ class AirtableService {
         username: user.fields.username,
         email: user.fields.email,
         phone: user.fields.phone,
-        avatar_url: user.fields.avatar_url || user.fields.avatar,
+        avatar_url: user.fields.avatar_url || '',
         provider: user.fields.provider || 'email',
         provider_id: user.fields.provider_id,
         password_hash: user.fields.password_hash,
@@ -148,15 +155,11 @@ class AirtableService {
         return user;
       }
 
-      // Check if email already exists with ANY provider
       if (email) {
         const existingUserByEmail = await this.findUserByEmail(email);
         if (existingUserByEmail) {
           console.log(`⚠️ Email ${email} already exists with provider: ${existingUserByEmail.provider}`);
-          
-          // If it's the same provider, this shouldn't happen (caught above)
-          // If it's a different provider, we have options:
-          
+    
           if (existingUserByEmail.provider === 'email') {
             // User signed up with email/password, now trying OAuth
             throw new Error(`An account with email ${email} already exists. Please log in using your email and password, or use the "Link Account" feature to connect your ${provider} account.`);
@@ -184,15 +187,12 @@ class AirtableService {
         is_verified: is_verified || true,
         password_hash: '', // OAuth users don't have passwords
         verification_token: '',
-        created_at: new Date().toISOString()
-        // Note: profile_completed field can be added to Airtable if needed
+        created_at: new Date().toISOString(),
+        // OAuth-specific fields
+        provider: provider || 'oauth',
+        provider_id: provider_id ? provider_id.toString() : '',
+        avatar_url: avatar_url || ''
       };
-
-      // Add optional OAuth fields only if they exist in your Airtable schema
-      // You can uncomment these lines after adding the fields to Airtable
-      // if (avatar_url) userFields.avatar_url = avatar_url;
-      // if (provider) userFields.provider = provider;
-      // if (provider_id) userFields.provider_id = provider_id.toString();
 
       const records = await this.usersTable.create([
         {
@@ -207,7 +207,7 @@ class AirtableService {
         username: newUser.fields.username,
         email: newUser.fields.email,
         phone: newUser.fields.phone,
-        avatar_url: avatar_url || '', // Store in memory for session
+        avatar_url: avatar_url || '', 
         provider: provider || 'oauth',
         provider_id: provider_id || '',
         is_verified: newUser.fields.is_verified,
@@ -223,7 +223,6 @@ class AirtableService {
     }
   }
 
-  // Find user by OAuth provider (simplified for now)
   async findUserByProvider(provider, provider_id) {
     try {
       // For now, since the fields don't exist yet, return null
@@ -274,7 +273,7 @@ class AirtableService {
         username: record.fields.username,
         email: record.fields.email,
         phone: record.fields.phone,
-        avatar_url: record.fields.avatar_url || record.fields.avatar,
+        avatar_url: record.fields.avatar_url || '',
         provider: record.fields.provider,
         provider_id: record.fields.provider_id,
         password_hash: record.fields.password_hash,
@@ -310,8 +309,10 @@ class AirtableService {
         username: user.fields.username,
         email: user.fields.email,
         phone: user.fields.phone,
+        avatar_url: user.fields.avatar_url,
+        provider: user.fields.provider,
+        provider_id: user.fields.provider_id,
         password_hash: user.fields.password_hash,
-        avatar: user.fields.avatar,
         is_verified: user.fields.is_verified,
         created_at: user.fields.created_at
       };
@@ -337,7 +338,9 @@ class AirtableService {
         username: record.fields.username,
         email: record.fields.email,
         phone: record.fields.phone,
-        avatar: record.fields.avatar,
+        avatar_url: record.fields.avatar_url,
+        provider: record.fields.provider,
+        provider_id: record.fields.provider_id,
         is_verified: record.fields.is_verified,
         created_at: record.fields.created_at
       };
@@ -399,13 +402,12 @@ class AirtableService {
       }
       if (error.message && error.message.includes('Unknown field name')) {
         console.error('❌ Please create the Users table with required fields in your Airtable base');
-        console.error('📝 Required fields: username, email, phone, full_name, password_hash');
+        console.error('📝 Required fields: username, email, phone, full_name, password_hash, provider, provider_id, avatar_url, is_verified, verification_token, created_at');
       }
       return false;
     }
   }
 
-  // Generate password reset token
   async generatePasswordResetToken(email) {
     try {
       // First check if user exists
@@ -415,13 +417,12 @@ class AirtableService {
         throw new Error('No account found with this email address. Please check your email or create a new account.');
       }
 
-      // Generate secure reset token (random 32 bytes as hex)
       const crypto = require('crypto');
       const resetToken = crypto.randomBytes(32).toString('hex');
-      const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+      const resetExpires = new Date(Date.now() + 60 * 60 * 1000); 
 
       try {
-        // Update the user record with reset token and expiration
+       
         await this.usersTable.update(existingUser.id, {
           'reset_token': resetToken,
           'reset_expires': resetExpires.toISOString()
@@ -452,7 +453,6 @@ class AirtableService {
     }
   }
 
-  // Verify password reset token
   async verifyPasswordResetToken(token) {
     try {
       const records = await this.usersTable.select({
@@ -493,20 +493,17 @@ class AirtableService {
     }
   }
 
-  // Reset user password with token
   async resetPasswordWithToken(token, newPassword) {
     try {
       // Verify the token first
       const user = await this.verifyPasswordResetToken(token);
       
-      // Hash the new password properly using bcrypt
       const bcrypt = require('bcryptjs');
       const saltRounds = 12;
       const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
       console.log('🔐 Updating password hash for user:', user.email);
 
-      // Update the user with new hashed password and clear reset fields
       await this.usersTable.update(user.id, {
         'password_hash': hashedPassword,
         'reset_token': null,
@@ -528,10 +525,9 @@ class AirtableService {
     }
   }
 
-  // Check if password reset fields exist in Airtable
   async checkPasswordResetFields() {
     try {
-      // Try to select with the required fields to see if they exist
+        
       const records = await this.usersTable.select({
         maxRecords: 1,
         fields: ['username', 'reset_token', 'reset_expires']

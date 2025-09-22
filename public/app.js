@@ -30,7 +30,6 @@
 
   function confetti(){ /* removed emoji confetti for a cleaner look */ }
 
-  // Modal functionality
   function showModal() {
     if (modal) {
       modal.style.display = 'flex';
@@ -46,14 +45,12 @@
     }
   }
 
-  // Enhanced meeting creation
   if (start){
     start.onclick = () => {
       showModal();
     };
   }
 
-  // Modal event listeners
   if (closeModal) closeModal.onclick = hideModal;
   if (cancelMeeting) cancelMeeting.onclick = hideModal;
   if (modalOverlay) modalOverlay.onclick = hideModal;
