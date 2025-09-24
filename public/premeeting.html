@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HangO — Pre-Meeting Setup</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .premeeting-container {
+      min-height: 100vh;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .premeeting-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+    }
+    
+    .preview-area {
+      position: relative;
+      width: 100%;
+      height: 200px;
+      background: #000;
+      border-radius: 12px;
+      margin: 24px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    
+    #localVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 12px;
+    }
+    
+    .video-placeholder {
+      color: var(--muted);
+      font-size: 48px;
+    }
+    
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 24px 0;
+    }
+    
+    .control-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 16px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .control-item:hover {
+      border-color: var(--brand);
+      background: rgba(37, 99, 235, 0.1);
+    }
+    
+    .control-item.active {
+      border-color: var(--brand);
+      background: rgba(37, 99, 235, 0.2);
+    }
+    
+    .control-item.disabled {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.1);
+    }
+    
+    .control-icon {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+    
+    .control-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    
+    .join-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    
+    .join-actions .btn {
+      flex: 1;
+    }
+    
+    .meeting-info {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    
+    .meeting-code {
+      font-family: monospace;
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: var(--brand);
+    }
+  </style>
+</head>
+<body>
+  <header class="nav nav--dock">
+    <div class="container">
+      <div class="nav-dock">
+        <a href="/" class="brand" aria-label="HangO home">
+          <svg class="logo-mark" width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#22d3ee"/>
+                <stop offset="50%" stop-color="#a78bfa"/>
+                <stop offset="100%" stop-color="#f472b6"/>
+              </linearGradient>
+            </defs>
+            <rect x="4" y="8" width="40" height="32" rx="10" stroke="url(#g1)" stroke-width="3"/>
+            <circle cx="16" cy="24" r="6" fill="url(#g1)"/>
+            <circle cx="32" cy="24" r="6" stroke="url(#g1)" stroke-width="3" fill="none"/>
+          </svg>
+          <span class="brand__name text-gradient">HangO</span>
+        </a>
+        <nav class="nav-menu">
+          <a class="nav-link" href="/">Home</a>
+          <a href="/" class="btn btn--ghost">Cancel</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <div class="premeeting-container">
+    <div class="premeeting-card">
+      <h1>Ready to join?</h1>
+      <p style="color: var(--muted); margin-bottom: 0;">Set up your camera and microphone before joining the meeting</p>
+      
+      <div class="meeting-info">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 0.875rem; color: var(--muted);">Meeting Code</div>
+            <div class="meeting-code" id="displayCode">ABC123</div>
+          </div>
+          <div>
+            <div style="font-size: 0.875rem; color: var(--muted);">Meeting Title</div>
+            <div id="displayTitle" style="font-weight: 500;">Instant Meeting</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-area">
+        <video id="localVideo" autoplay muted playsinline style="display: none;"></video>
+        <div id="videoPlaceholder" class="video-placeholder">📹</div>
+      </div>
+
+      <div class="controls-grid">
+        <div class="control-item active" id="cameraControl">
+          <svg class="control-icon" viewBox="0 0 24 24">
+            <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 2v-6l-4 2z"/>
+          </svg>
+          <span class="control-label">Camera On</span>
+        </div>
+        
+        <div class="control-item active" id="micControl">
+          <svg class="control-icon" viewBox="0 0 24 24">
+            <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+            <path d="M12 18v4"/>
+            <path d="M8 22h8"/>
+          </svg>
+          <span class="control-label">Mic On</span>
+        </div>
+      </div>
+
+      <div class="join-actions">
+        <button class="btn btn--ghost" onclick="window.location.href='/'">Cancel</button>
+        <button class="btn btn--neon" id="joinMeetingBtn">Join Meeting</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Get meeting details from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const meetingCode = urlParams.get('code') || 'ABC123';
+    const meetingTitle = urlParams.get('title') || 'Instant Meeting';
+    
+    // Display meeting info
+    document.getElementById('displayCode').textContent = meetingCode;
+    document.getElementById('displayTitle').textContent = meetingTitle;
+    
+    // Media stream and settings
+    let localStream = null;
+    let cameraEnabled = true;
+    let micEnabled = true;
+    
+    // DOM elements
+    const localVideo = document.getElementById('localVideo');
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const cameraControl = document.getElementById('cameraControl');
+    const micControl = document.getElementById('micControl');
+    const joinBtn = document.getElementById('joinMeetingBtn');
+    
+    // Initialize camera and microphone
+    async function initializeMedia() {
+      try {
+        // Request camera and microphone access
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        
+        // Display video preview
+        localVideo.srcObject = localStream;
+        localVideo.style.display = 'block';
+        videoPlaceholder.style.display = 'none';
+        
+        console.log('Media initialized successfully');
+      } catch (error) {
+        console.error('Error accessing media devices:', error);
+        showToast('Camera/microphone access denied. You can still join with audio/video disabled.');
+        
+        // Update controls to show disabled state
+        cameraEnabled = false;
+        micEnabled = false;
+        updateControlStates();
+      }
+    }
+    
+    // Update control button states
+    function updateControlStates() {
+      // Camera control
+      if (cameraEnabled) {
+        cameraControl.classList.remove('disabled');
+        cameraControl.classList.add('active');
+        cameraControl.querySelector('.control-label').textContent = 'Camera On';
+        if (localStream) {
+          localStream.getVideoTracks().forEach(track => track.enabled = true);
+          localVideo.style.display = 'block';
+          videoPlaceholder.style.display = 'none';
+        }
+      } else {
+        cameraControl.classList.remove('active');
+        cameraControl.classList.add('disabled');
+        cameraControl.querySelector('.control-label').textContent = 'Camera Off';
+        if (localStream) {
+          localStream.getVideoTracks().forEach(track => track.enabled = false);
+        }
+        localVideo.style.display = 'none';
+        videoPlaceholder.style.display = 'flex';
+        videoPlaceholder.textContent = '📹 Camera Off';
+      }
+      
+      // Microphone control
+      if (micEnabled) {
+        micControl.classList.remove('disabled');
+        micControl.classList.add('active');
+        micControl.querySelector('.control-label').textContent = 'Mic On';
+        if (localStream) {
+          localStream.getAudioTracks().forEach(track => track.enabled = true);
+        }
+      } else {
+        micControl.classList.remove('active');
+        micControl.classList.add('disabled');
+        micControl.querySelector('.control-label').textContent = 'Mic Off';
+        if (localStream) {
+          localStream.getAudioTracks().forEach(track => track.enabled = false);
+        }
+      }
+    }
+    
+    // Camera toggle
+    cameraControl.addEventListener('click', () => {
+      cameraEnabled = !cameraEnabled;
+      updateControlStates();
+    });
+    
+    // Microphone toggle
+    micControl.addEventListener('click', () => {
+      micEnabled = !micEnabled;
+      updateControlStates();
+    });
+    
+    // Join meeting
+    joinBtn.addEventListener('click', () => {
+      // Generate unique session ID for this participant
+      const sessionId = Math.random().toString(36).substr(2, 9);
+      
+      // Store settings in localStorage for the meeting page
+      const meetingSettings = {
+        code: meetingCode,
+        title: meetingTitle,
+        cameraEnabled,
+        micEnabled,
+        hasMediaAccess: !!localStream,
+        sessionId: sessionId
+      };
+      
+      localStorage.setItem('preMeetingSettings', JSON.stringify(meetingSettings));
+      
+      showToast('Joining meeting...');
+      
+      // Redirect to actual meeting page
+      setTimeout(() => {
+        window.location.href = `/meet.html?code=${encodeURIComponent(meetingCode)}`;
+      }, 500);
+    });
+    
+    // Toast notification function
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#22c55e;color:white;padding:12px 24px;border-radius:8px;z-index:9999;';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeMedia();
+    });
+    
+    // Cleanup when leaving page
+    window.addEventListener('beforeunload', () => {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+    });
+  </script>
+</body>
+</html>

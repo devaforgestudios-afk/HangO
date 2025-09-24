@@ -10,6 +10,7 @@ class AirtableService {
     }).base(process.env.AIRTABLE_BASE_ID);
     
     this.usersTable = this.base('Users');
+    this.meetingsTable = this.base('Meetings');
   }
 
   // Hash password
@@ -557,6 +558,335 @@ class AirtableService {
       return false;
     }
   }
+
+  // MEETING MANAGEMENT METHODS
+
+  // Create a new meeting
+  async createMeeting(meetingData) {
+    try {
+      const { 
+        meeting_code, 
+        title, 
+        created_by_user_id, 
+        created_by_name, 
+        is_anonymous,
+        settings 
+      } = meetingData;
+
+      const meetingFields = {
+        meeting_code: meeting_code,
+        title: title || 'HangO Meeting',
+        created_by_user_id: created_by_user_id || '',
+        created_by_name: created_by_name || 'Anonymous',
+        is_anonymous: is_anonymous || false,
+        status: 'active',
+        participants: JSON.stringify([]), // Start with empty participants
+        settings: JSON.stringify(settings || {}),
+        created_at: new Date().toISOString(),
+        ended_at: ''
+      };
+
+      const records = await this.meetingsTable.create([{
+        fields: meetingFields
+      }]);
+
+      const newMeeting = records[0];
+      return {
+        id: newMeeting.id,
+        meeting_code: newMeeting.fields.meeting_code,
+        title: newMeeting.fields.title,
+        created_by_user_id: newMeeting.fields.created_by_user_id,
+        created_by_name: newMeeting.fields.created_by_name,
+        is_anonymous: newMeeting.fields.is_anonymous,
+        status: newMeeting.fields.status,
+        participants: JSON.parse(newMeeting.fields.participants || '[]'),
+        settings: JSON.parse(newMeeting.fields.settings || '{}'),
+        created_at: newMeeting.fields.created_at,
+        ended_at: newMeeting.fields.ended_at
+      };
+
+    } catch (error) {
+      console.error('❌ Error creating meeting:', error);
+      throw error;
+    }
+  }
+
+  // Find meeting by code
+  async findMeetingByCode(meetingCode) {
+    try {
+      const records = await this.meetingsTable.select({
+        filterByFormula: `{meeting_code} = '${meetingCode}'`,
+        maxRecords: 1
+      }).firstPage();
+
+      if (records.length === 0) {
+        return null;
+      }
+
+      const meeting = records[0];
+      return {
+        id: meeting.id,
+        meeting_code: meeting.fields.meeting_code,
+        title: meeting.fields.title,
+        created_by_user_id: meeting.fields.created_by_user_id,
+        created_by_name: meeting.fields.created_by_name,
+        is_anonymous: meeting.fields.is_anonymous,
+        status: meeting.fields.status,
+        participants: JSON.parse(meeting.fields.participants || '[]'),
+        settings: JSON.parse(meeting.fields.settings || '{}'),
+        created_at: meeting.fields.created_at,
+        ended_at: meeting.fields.ended_at
+      };
+
+    } catch (error) {
+      console.error('❌ Error finding meeting:', error);
+      return null;
+    }
+  }
+
+  // Join a meeting
+  async joinMeeting(meetingCode, participantData) {
+    try {
+      const meeting = await this.findMeetingByCode(meetingCode);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+
+      if (meeting.status !== 'active') {
+        throw new Error('Meeting is not active');
+      }
+
+      // Add participant to the meeting
+      const participants = meeting.participants || [];
+      const newParticipant = {
+        user_id: participantData.user_id || '',
+        name: participantData.name || 'Anonymous User',
+        is_anonymous: participantData.is_anonymous !== false,
+        joined_at: new Date().toISOString(),
+        session_id: participantData.session_id || Math.random().toString(36).substr(2, 9) // Unique session ID
+      };
+
+      // For anonymous users, allow multiple with different session IDs
+      // For authenticated users, check if already in meeting
+      let existingIndex = -1;
+      if (newParticipant.user_id && !newParticipant.is_anonymous) {
+        existingIndex = participants.findIndex(p => 
+          p.user_id && p.user_id === newParticipant.user_id
+        );
+      }
+
+      if (existingIndex >= 0) {
+        // Update existing authenticated user (rejoin scenario)
+        participants[existingIndex] = newParticipant;
+        console.log(`🔄 User ${newParticipant.name} rejoined meeting ${meetingCode}`);
+      } else {
+        // Add new participant (authenticated user first time, or any anonymous user)
+        participants.push(newParticipant);
+        console.log(`👋 Participant ${newParticipant.name} joined meeting ${meetingCode} (Total: ${participants.length})`);
+      }
+
+      // Update meeting with new participant list
+      await this.meetingsTable.update([{
+        id: meeting.id,
+        fields: {
+          participants: JSON.stringify(participants)
+        }
+      }]);
+
+      return {
+        ...meeting,
+        participants: participants
+      };
+
+    } catch (error) {
+      console.error('❌ Error joining meeting:', error);
+      throw error;
+    }
+  }
+
+  // Remove participant from meeting (when they leave)
+  async leaveMeeting(meetingCode, participantData) {
+    try {
+      const meeting = await this.findMeetingByCode(meetingCode);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+
+      let participants = meeting.participants || [];
+      const originalCount = participants.length;
+
+      // Remove participant by user_id (for authenticated users) or session_id (for anonymous)
+      if (participantData.user_id && !participantData.is_anonymous) {
+        participants = participants.filter(p => p.user_id !== participantData.user_id);
+      } else if (participantData.session_id) {
+        participants = participants.filter(p => p.session_id !== participantData.session_id);
+      }
+
+      const removedCount = originalCount - participants.length;
+      if (removedCount > 0) {
+        // Update meeting participants
+        await this.meetingsTable.update([{
+          id: meeting.id,
+          fields: {
+            participants: JSON.stringify(participants)
+          }
+        }]);
+
+        console.log(`👋 Participant left meeting ${meetingCode} (Remaining: ${participants.length})`);
+
+        // If no participants left, optionally auto-end the meeting
+        if (participants.length === 0) {
+          console.log(`🏁 No participants left in meeting ${meetingCode}, auto-ending meeting`);
+          await this.endMeeting(meetingCode, 'system');
+          return { ended: true, participants: [] };
+        }
+      }
+
+      return {
+        ...meeting,
+        participants: participants
+      };
+
+    } catch (error) {
+      console.error('❌ Error leaving meeting:', error);
+      throw error;
+    }
+  }
+
+  // End a meeting
+  async endMeeting(meetingCode, endedByUserId = '') {
+    try {
+      const meeting = await this.findMeetingByCode(meetingCode);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+
+      // Store meeting data for response before deletion
+      const meetingData = {
+        ...meeting,
+        status: 'ended',
+        ended_at: new Date().toISOString(),
+        ended_by_user_id: endedByUserId
+      };
+
+      // Delete the meeting record from database
+      await this.meetingsTable.destroy([meeting.id]);
+      
+      console.log(`🗑️ Meeting ${meetingCode} deleted from database after ending`);
+
+      return meetingData;
+
+    } catch (error) {
+      console.error('❌ Error ending meeting:', error);
+      throw error;
+    }
+  }
+
+  // Get user's meetings
+  async getUserMeetings(userId) {
+    try {
+      const records = await this.meetingsTable.select({
+        filterByFormula: `{created_by_user_id} = '${userId}'`,
+        sort: [{ field: 'created_at', direction: 'desc' }],
+        maxRecords: 50
+      }).firstPage();
+
+      return records.map(meeting => ({
+        id: meeting.id,
+        meeting_code: meeting.fields.meeting_code,
+        title: meeting.fields.title,
+        status: meeting.fields.status,
+        participants: JSON.parse(meeting.fields.participants || '[]'),
+        created_at: meeting.fields.created_at,
+        ended_at: meeting.fields.ended_at
+      }));
+
+    } catch (error) {
+      console.error('❌ Error getting user meetings:', error);
+      return [];
+    }
+  }
+
+  // Update meeting participant count for user stats
+  async updateUserMeetingStats(userId) {
+    try {
+      if (!userId) return;
+
+      const meetings = await this.getUserMeetings(userId);
+      const completedMeetings = meetings.filter(m => m.status === 'ended');
+
+      // Update user's total_meetings count
+      const user = await this.findUserById(userId);
+      if (user) {
+        await this.usersTable.update([{
+          id: userId,
+          fields: {
+            total_meetings: completedMeetings.length
+          }
+        }]);
+      }
+
+    } catch (error) {
+      console.error('❌ Error updating user meeting stats:', error);
+    }
+  }
+
+  // Auto-cleanup: Delete meetings that have been active for more than 24 hours (abandoned meetings)
+  async cleanupAbandonedMeetings() {
+    try {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      
+      const records = await this.meetingsTable.select({
+        filterByFormula: `AND({status} = 'active', {created_at} < '${twentyFourHoursAgo}')`,
+        maxRecords: 100
+      }).firstPage();
+
+      if (records.length > 0) {
+        const recordIds = records.map(record => record.id);
+        await this.meetingsTable.destroy(recordIds);
+        
+        console.log(`🧹 Cleaned up ${records.length} abandoned meetings older than 24 hours`);
+        return records.length;
+      }
+      
+      return 0;
+    } catch (error) {
+      console.error('❌ Error cleaning up abandoned meetings:', error);
+      return 0;
+    }
+  }
+
+  // Auto-cleanup: Delete meetings with no participants for more than 1 hour
+  async cleanupEmptyMeetings() {
+    try {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      
+      const records = await this.meetingsTable.select({
+        filterByFormula: `AND({status} = 'active', {created_at} < '${oneHourAgo}')`,
+        maxRecords: 100
+      }).firstPage();
+
+      const emptyMeetings = [];
+      for (const record of records) {
+        const participants = JSON.parse(record.fields.participants || '[]');
+        if (participants.length === 0) {
+          emptyMeetings.push(record.id);
+        }
+      }
+
+      if (emptyMeetings.length > 0) {
+        await this.meetingsTable.destroy(emptyMeetings);
+        console.log(`🧹 Cleaned up ${emptyMeetings.length} empty meetings older than 1 hour`);
+        return emptyMeetings.length;
+      }
+      
+      return 0;
+    } catch (error) {
+      console.error('❌ Error cleaning up empty meetings:', error);
+      return 0;
+    }
+  }
+
 }
 
-module.exports = AirtableService;
+module.exports = AirtableService;module.exports = AirtableService;

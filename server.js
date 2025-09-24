@@ -305,6 +305,205 @@ app.post('/api/user/reset-password', async (req, res) => {
   }
 });
 
+// MEETING API ENDPOINTS
+
+// Create a new meeting
+app.post('/api/meeting/create', async (req, res) => {
+  console.log('🎯 Meeting creation request:', req.body);
+  
+  try {
+    const { meeting_code, title, settings, anonymous_name } = req.body;
+    
+    // Generate unique meeting code if not provided
+    const finalMeetingCode = meeting_code || Math.random().toString(36).slice(2, 8).toUpperCase();
+    
+    // Check if user is authenticated
+    const userId = req.user?.id || '';
+    const userName = req.user?.username || anonymous_name || 'Anonymous';
+    const isAnonymous = !req.user;
+    
+    const meetingData = {
+      meeting_code: finalMeetingCode,
+      title: title || 'HangO Meeting',
+      created_by_user_id: userId,
+      created_by_name: userName,
+      is_anonymous: isAnonymous,
+      settings: settings || {}
+    };
+    
+    const meeting = await airtable.createMeeting(meetingData);
+    console.log('✅ Meeting created:', meeting.meeting_code);
+    
+    res.json({
+      success: true,
+      meeting: meeting,
+      message: 'Meeting created successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Meeting creation error:', error);
+    res.status(400).json({
+      error: error.message || 'Failed to create meeting'
+    });
+  }
+});
+
+// Join a meeting
+app.post('/api/meeting/join', async (req, res) => {
+  console.log('🚪 Meeting join request:', req.body);
+  
+  try {
+    const { meeting_code, anonymous_name } = req.body;
+    
+    if (!meeting_code) {
+      return res.status(400).json({ error: 'Meeting code is required' });
+    }
+    
+    // Check if user is authenticated
+    const userId = req.user?.id || '';
+    const userName = req.user?.username || anonymous_name || 'Anonymous User';
+    const isAnonymous = !req.user;
+    
+    const participantData = {
+      user_id: userId,
+      name: userName,
+      is_anonymous: isAnonymous,
+      session_id: req.body.session_id || Math.random().toString(36).substr(2, 9)
+    };
+    
+    const meeting = await airtable.joinMeeting(meeting_code, participantData);
+    console.log('✅ User joined meeting:', meeting.meeting_code);
+    
+    res.json({
+      success: true,
+      meeting: meeting,
+      message: 'Joined meeting successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Meeting join error:', error);
+    res.status(400).json({
+      error: error.message || 'Failed to join meeting'
+    });
+  }
+});
+
+// Get meeting details
+app.get('/api/meeting/:code', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const meeting = await airtable.findMeetingByCode(code);
+    
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    
+    res.json({
+      success: true,
+      meeting: meeting
+    });
+    
+  } catch (error) {
+    console.error('❌ Get meeting error:', error);
+    res.status(500).json({
+      error: 'Failed to get meeting details'
+    });
+  }
+});
+
+// End a meeting
+app.post('/api/meeting/end', async (req, res) => {
+  console.log('🔚 Meeting end request:', req.body);
+  
+  try {
+    const { meeting_code } = req.body;
+    
+    if (!meeting_code) {
+      return res.status(400).json({ error: 'Meeting code is required' });
+    }
+    
+    const userId = req.user?.id || '';
+    const meeting = await airtable.endMeeting(meeting_code, userId);
+    
+    // Update user stats if authenticated user
+    if (userId) {
+      await airtable.updateUserMeetingStats(userId);
+    }
+    
+    console.log('✅ Meeting ended and deleted:', meeting.meeting_code);
+    
+    res.json({
+      success: true,
+      meeting: meeting,
+      message: 'Meeting ended and removed from database'
+    });
+    
+  } catch (error) {
+    console.error('❌ Meeting end error:', error);
+    res.status(400).json({
+      error: error.message || 'Failed to end meeting'
+    });
+  }
+});
+
+// Leave meeting (remove participant)
+app.post('/api/meeting/leave', async (req, res) => {
+  console.log('👋 Meeting leave request:', req.body);
+  
+  try {
+    const { meeting_code, session_id } = req.body;
+    
+    if (!meeting_code) {
+      return res.status(400).json({ error: 'Meeting code is required' });
+    }
+    
+    const participantData = {
+      user_id: req.user?.id || '',
+      is_anonymous: !req.user,
+      session_id: session_id,
+      name: req.user?.username || 'Anonymous User'
+    };
+    
+    const result = await airtable.leaveMeeting(meeting_code, participantData);
+    
+    console.log('✅ Participant left meeting:', meeting_code);
+    
+    res.json({
+      success: true,
+      meeting: result,
+      message: result.ended ? 'Meeting ended (no participants left)' : 'Left meeting successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Meeting leave error:', error);
+    res.status(400).json({
+      error: error.message || 'Failed to leave meeting'
+    });
+  }
+});
+
+// Get user's meetings (authenticated users only)
+app.get('/api/user/meetings', async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    const meetings = await airtable.getUserMeetings(req.user.id);
+    
+    res.json({
+      success: true,
+      meetings: meetings
+    });
+    
+  } catch (error) {
+    console.error('❌ Get user meetings error:', error);
+    res.status(500).json({
+      error: 'Failed to get user meetings'
+    });
+  }
+});
+
 app.get('/health', async (req, res) => {
   const airtableConnected = await airtable.testConnection();
   res.json({
@@ -358,6 +557,23 @@ const startServer = async () => {
         console.log('1. Add AIRTABLE_API_KEY to your .env file');
         console.log('2. Add AIRTABLE_BASE_ID to your .env file');
         console.log('3. Create a "Users" table in your Airtable base');
+      }
+
+      // Setup automatic cleanup of abandoned meetings (only if Airtable is connected)
+      if (airtableConnected) {
+        setInterval(async () => {
+          try {
+            const cleanupCount = await airtable.cleanupAbandonedMeetings();
+            const emptyCount = await airtable.cleanupEmptyMeetings();
+            if (cleanupCount > 0 || emptyCount > 0) {
+              console.log(`🧹 Auto-cleanup: ${cleanupCount} abandoned + ${emptyCount} empty meetings removed`);
+            }
+          } catch (error) {
+            console.error('❌ Cleanup error:', error);
+          }
+        }, 60 * 60 * 1000); // Run every hour
+        
+        console.log('🧹 Auto-cleanup enabled: Runs every hour to remove abandoned meetings');
       }
     });
     

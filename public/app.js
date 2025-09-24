@@ -1,8 +1,17 @@
 // Simple client-side meeting code demo
-(function(){
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('DOM fully loaded');
+  
   const msg = document.getElementById('heroMsg');
   const start = document.getElementById('startMeet');
   const join = document.getElementById('joinMeet');
+  
+  console.log('Found start button:', !!start);
+  console.log('Found join button:', !!join);
+  
+  if (start) {
+    console.log('Start button element:', start);
+  }
   const input = document.getElementById('joinCode');
   const quickJoin = document.getElementById('quickJoin');
   const scheduleMeet = document.getElementById('scheduleMeet');
@@ -46,9 +55,61 @@
   }
 
   if (start){
-    start.onclick = () => {
-      showModal();
+    console.log('Attaching click handler to start button');
+    start.onclick = async (e) => {
+      e.preventDefault();
+      console.log('Start Meeting button clicked!');
+      
+      // Create an instant meeting via API
+      const code = randomCode();
+      console.log('Generated code:', code);
+      
+      const meetingData = {
+        meeting_code: code,
+        title: 'Instant Meeting',
+        settings: {
+          enableVideo: true,
+          enableAudio: true,
+          allowScreenShare: true
+        },
+        anonymous_name: 'Anonymous User'
+      };
+      
+      console.log('Creating meeting with data:', meetingData);
+      toast('Creating instant meeting...');
+      
+      try {
+        const response = await fetch('/api/meeting/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(meetingData)
+        });
+        
+        console.log('API response status:', response.status);
+        const result = await response.json();
+        console.log('API result:', result);
+        
+        if (result.success) {
+          toast('Meeting created! Redirecting...');
+          setTimeout(() => {
+            console.log('Redirecting to pre-meeting page...');
+            window.location.href = `/premeeting.html?code=${encodeURIComponent(result.meeting.meeting_code)}&title=Instant Meeting`;
+          }, 1000);
+        } else {
+          toast(`Error: ${result.error}`);
+          console.error('Meeting creation failed:', result.error);
+        }
+      } catch (error) {
+        console.error('Network error creating meeting:', error);
+        toast('Failed to create meeting. Please try again.');
+      }
     };
+  } else {
+    console.error('Start button not found! Available buttons:');
+    console.log('startMeet:', document.getElementById('startMeet'));
+    console.log('All buttons:', document.querySelectorAll('button'));
   }
 
   if (closeModal) closeModal.onclick = hideModal;
@@ -62,39 +123,102 @@
   }
 
   if (createMeeting) {
-    createMeeting.onclick = () => {
+    createMeeting.onclick = async () => {
       const code = meetingCodeInput?.value || randomCode();
       const title = meetingTitleInput?.value?.trim();
       const enableVideo = document.getElementById('enableVideo')?.checked;
       const enableAudio = document.getElementById('enableAudio')?.checked;
       const allowScreenShare = document.getElementById('allowScreenShare')?.checked;
       
-      // Store meeting preferences in localStorage for the meeting page
-      const meetingSettings = {
+      // Prepare meeting data
+      const meetingData = {
+        meeting_code: code,
         title: title || 'HangO Meeting',
-        enableVideo,
-        enableAudio,
-        allowScreenShare
+        settings: {
+          enableVideo,
+          enableAudio,
+          allowScreenShare
+        },
+        anonymous_name: 'Anonymous User' // For non-logged-in users
       };
-      localStorage.setItem('meetingSettings', JSON.stringify(meetingSettings));
       
-      toast(title ? `Creating "${title}"` : 'New meeting created');
-      confetti();
-      hideModal();
-      
-      setTimeout(() => {
-        window.location.href = `/meet.html?code=${encodeURIComponent(code)}`;
-      }, 500);
+      try {
+        // Create meeting via API
+        const response = await fetch('/api/meeting/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(meetingData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          // Store meeting preferences in localStorage for the meeting page
+          const meetingSettings = {
+            title: result.meeting.title,
+            enableVideo,
+            enableAudio,
+            allowScreenShare
+          };
+          localStorage.setItem('meetingSettings', JSON.stringify(meetingSettings));
+          
+          toast(title ? `Creating "${title}"` : 'New meeting created');
+          confetti();
+          hideModal();
+          
+          setTimeout(() => {
+            const meetingTitle = title || 'HangO Meeting';
+            window.location.href = `/premeeting.html?code=${encodeURIComponent(result.meeting.meeting_code)}&title=${encodeURIComponent(meetingTitle)}`;
+          }, 500);
+        } else {
+          toast(`Error: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Meeting creation error:', error);
+        toast('Failed to create meeting. Please try again.');
+      }
     };
   }
 
   // Quick join functionality
   if (quickJoin) {
-    quickJoin.onclick = () => {
-      // Generate a random code and join immediately
+    quickJoin.onclick = async () => {
+      // Generate a random code and create meeting immediately
       const code = randomCode();
-      toast(`Quick joining ${code}`);
-      window.location.href = `/meet.html?code=${encodeURIComponent(code)}`;
+      
+      try {
+        // Create a quick meeting
+        const response = await fetch('/api/meeting/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            meeting_code: code,
+            title: 'Quick Meeting',
+            settings: {
+              enableVideo: true,
+              enableAudio: true,
+              allowScreenShare: true
+            },
+            anonymous_name: 'Anonymous User'
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          toast(`Quick joining ${result.meeting.meeting_code}`);
+          window.location.href = `/premeeting.html?code=${encodeURIComponent(result.meeting.meeting_code)}&title=Quick Meeting`;
+        } else {
+          toast(`Error: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Quick meeting creation error:', error);
+        toast('Failed to create quick meeting. Please try again.');
+      }
     };
   }
 
@@ -106,47 +230,142 @@
   }
 
   if (join){
-    join.onclick = () => {
+    join.onclick = async () => {
       const code = (input?.value || '').trim().toUpperCase();
       if (!code) { 
         if (msg) msg.textContent = 'Enter a code first';
         toast('Please enter a meeting code');
         input?.focus();
+        input?.style.setProperty('border-color', '#ef4444', 'important');
+        setTimeout(() => input?.style.removeProperty('border-color'), 2000);
         return; 
       }
       
-      // Validate code format (6-8 characters, alphanumeric)
+      // Validate code format (3-8 characters, alphanumeric)
       if (!/^[A-Z0-9]{3,8}$/.test(code)) {
         toast('Invalid code format. Use 3-8 letters/numbers.');
         input?.focus();
+        input?.style.setProperty('border-color', '#ef4444', 'important');
+        setTimeout(() => input?.style.removeProperty('border-color'), 2000);
         return;
       }
       
-      // Show joining feedback
+      // Show joining feedback with animation
       const originalText = join.textContent;
       join.textContent = 'Joining...';
       join.disabled = true;
+      join.style.opacity = '0.7';
       
-      toast(`Joining meeting ${code}`);
+      // Add loading animation to input
+      input.style.borderColor = '#2563eb';
+      input.style.backgroundColor = 'rgba(37, 99, 235, 0.1)';
       
-      // Simulate validation delay (in real app, this would be an API call)
-      setTimeout(() => {
-        window.location.href = `/meet.html?code=${encodeURIComponent(code)}`;
-      }, 800);
+      try {
+        // Join meeting via API
+        const response = await fetch('/api/meeting/join', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            meeting_code: code,
+            anonymous_name: 'Anonymous User'
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          // Success feedback
+          join.textContent = 'Success! ✓';
+          join.style.backgroundColor = '#22c55e';
+          join.style.color = 'white';
+          input.style.borderColor = '#22c55e';
+          input.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
+          
+          toast(`Joining meeting ${code}`);
+          
+          setTimeout(() => {
+            window.location.href = `/premeeting.html?code=${encodeURIComponent(code)}&title=Meeting ${code}`;
+          }, 800);
+        } else {
+          // Error feedback
+          const errorMsg = result.error || 'Meeting not found';
+          toast(`Error: ${errorMsg}`);
+          
+          // Visual error feedback
+          join.textContent = 'Not Found ✗';
+          join.style.backgroundColor = '#ef4444';
+          join.style.color = 'white';
+          input.style.borderColor = '#ef4444';
+          input.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+          
+          // Reset after delay
+          setTimeout(() => {
+            join.textContent = originalText;
+            join.disabled = code.length < 3;
+            join.style.backgroundColor = '';
+            join.style.color = '';
+            join.style.opacity = '';
+            input.style.borderColor = code.length >= 3 ? '#22c55e' : '';
+            input.style.backgroundColor = code.length >= 3 ? 'rgba(34, 197, 94, 0.1)' : '';
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Meeting join error:', error);
+        toast('Connection failed. Please check your internet and try again.');
+        
+        // Network error feedback
+        join.textContent = 'Try Again';
+        join.style.backgroundColor = '#f59e0b';
+        join.style.color = 'white';
+        
+        // Reset after delay
+        setTimeout(() => {
+          join.textContent = originalText;
+          join.disabled = false;
+          join.style.backgroundColor = '';
+          join.style.color = '';
+          join.style.opacity = '';
+          input.style.borderColor = '';
+          input.style.backgroundColor = '';
+        }, 3000);
+      }
     };
   }
 
-  // Enhanced input handling
+  // Enhanced input handling with better UX
   if (input) {
+    const codeHint = document.getElementById('codeHint');
+    
+    // Initialize button state
+    if (join) {
+      join.disabled = true;
+      join.textContent = 'Join';
+    }
+    
     input.addEventListener('input', (e) => {
       // Auto-format and validate as user types
       let value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (value.length > 8) value = value.slice(0, 8);
       e.target.value = value;
       
-      // Enable/disable join button based on valid input
+      // Real-time validation and button state
       if (join) {
-        join.disabled = value.length < 3;
+        const isValid = value.length >= 3 && /^[A-Z0-9]{3,8}$/.test(value);
+        join.disabled = !isValid;
+        
+        // Visual feedback for input validity
+        if (value.length === 0) {
+          input.style.borderColor = '';
+          input.style.backgroundColor = '';
+        } else if (isValid) {
+          input.style.borderColor = '#22c55e';
+          input.style.backgroundColor = 'rgba(34, 197, 94, 0.1)';
+        } else {
+          input.style.borderColor = '#ef4444';
+          input.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+        }
       }
     });
 
@@ -155,11 +374,36 @@
         join.click();
       }
     });
+    
+    // Focus handling with hints
+    input.addEventListener('focus', () => {
+      input.style.transform = 'scale(1.02)';
+      input.style.boxShadow = '0 0 0 3px rgba(37, 99, 235, 0.2)';
+      if (codeHint && input.value.length === 0) {
+        codeHint.style.display = 'block';
+      }
+    });
+    
+    input.addEventListener('blur', () => {
+      input.style.transform = '';
+      input.style.boxShadow = '';
+      if (codeHint) {
+        setTimeout(() => codeHint.style.display = 'none', 200);
+      }
+    });
 
-    // Auto-focus and select all on page load
+    // Auto-focus and select all on page load if there's existing value
     if (input.value) {
       input.select();
     }
+    
+    // Add paste handling for meeting codes
+    input.addEventListener('paste', (e) => {
+      setTimeout(() => {
+        // Trigger input event after paste to format the code
+        input.dispatchEvent(new Event('input'));
+      }, 10);
+    });
   }
 
   // Glow button removed
@@ -261,4 +505,4 @@
     update();
     setInterval(update, 1000);
   }
-})();
+});

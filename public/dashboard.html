@@ -176,8 +176,8 @@
       <div class="dashboard-username" id="userName">User</div>
       <div class="dashboard-email" id="userEmail">user@email.com</div>
       <div class="dashboard-actions">
-        <button onclick="window.location.href='/meet.html'">Create Meeting</button>
-        <button onclick="window.location.href='/meet.html'">Join Meeting</button>
+        <button id="dashboardCreateMeeting">Create Meeting</button>
+        <button id="dashboardJoinMeeting">Join Meeting</button>
         <button onclick="alert('Profile editing coming soon!')">Edit Profile</button>
       </div>
     </aside>
@@ -238,6 +238,97 @@
       }
     }
     loadDashboard();
+    
+    // Meeting functionality
+    function randomCode() { 
+      return Math.random().toString(36).slice(2, 8).toUpperCase(); 
+    }
+    
+    function toast(text) {
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.textContent = text;
+      el.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: var(--primary);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 1000;
+        transform: translateY(100px);
+        opacity: 0;
+        transition: all 0.3s ease;
+      `;
+      document.body.appendChild(el);
+      requestAnimationFrame(() => {
+        el.style.transform = 'translateY(0)';
+        el.style.opacity = '1';
+      });
+      setTimeout(() => {
+        el.style.transform = 'translateY(100px)';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 300);
+      }, 3000);
+    }
+    
+    // Create Meeting Button
+    document.getElementById('dashboardCreateMeeting').onclick = async () => {
+      const code = randomCode();
+      const meetingData = {
+        meeting_code: code,
+        title: 'Dashboard Meeting',
+        settings: {
+          enableVideo: true,
+          enableAudio: true,
+          allowScreenShare: true
+        }
+      };
+      
+      try {
+        toast('Creating meeting...');
+        
+        const response = await fetch('/api/meeting/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(meetingData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          localStorage.setItem('meetingSettings', JSON.stringify({
+            title: result.meeting.title,
+            enableVideo: true,
+            enableAudio: true,
+            allowScreenShare: true
+          }));
+          
+          toast('Meeting created! Redirecting...');
+          setTimeout(() => {
+            window.location.href = `/premeeting.html?code=${encodeURIComponent(result.meeting.meeting_code)}&title=${encodeURIComponent(result.meeting.title)}`;
+          }, 1000);
+        } else {
+          toast(`Error: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Meeting creation error:', error);
+        toast('Failed to create meeting. Please try again.');
+      }
+    };
+    
+    // Join Meeting Button
+    document.getElementById('dashboardJoinMeeting').onclick = () => {
+      const code = prompt('Enter meeting code:');
+      if (code && code.trim()) {
+        const cleanCode = code.trim().toUpperCase();
+        window.location.href = `/premeeting.html?code=${encodeURIComponent(cleanCode)}&title=Meeting ${cleanCode}`;
+      }
+    };
   </script>
 </body>
 </html>

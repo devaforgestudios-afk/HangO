@@ -57,8 +57,13 @@
 					<div class="cta">
 						<button id="startMeet" class="btn btn--neon">Start a meeting</button>
 						<div class="join">
-							<input id="joinCode" class="input" placeholder="Enter code to join" />
-							<button id="joinMeet" class="btn btn--ghost">Join</button>
+							<div style="position: relative; flex: 1;">
+								<input id="joinCode" class="input" placeholder="Enter code to join (e.g. ABC123)" maxlength="8" style="transition: all 0.2s ease;" />
+								<div id="codeHint" style="position: absolute; top: 100%; left: 0; font-size: 0.75rem; color: var(--muted); margin-top: 4px; display: none;">
+									Enter a 3-8 character meeting code
+								</div>
+							</div>
+							<button id="joinMeet" class="btn btn--ghost" disabled style="transition: all 0.2s ease;">Join</button>
 						</div>
 						<div class="quick-actions">
 							<button id="scheduleMeet" class="btn btn--ghost">Schedule later</button>
@@ -193,6 +198,63 @@
 		<script src="/globe.js"></script>
 	<script>
 		document.getElementById('year').textContent = new Date().getFullYear();
+		
+		// Simple start meeting functionality - guaranteed to work
+		document.addEventListener('DOMContentLoaded', function() {
+			console.log('Simple script loaded');
+			const startBtn = document.getElementById('startMeet');
+			console.log('Start button found:', !!startBtn);
+			
+			// Debug the button's position and styling
+			if (startBtn) {
+				console.log('Button element:', startBtn);
+				console.log('Button computed styles:', window.getComputedStyle(startBtn));
+				console.log('Button position:', startBtn.getBoundingClientRect());
+				
+				// Ensure button is properly positioned and clickable
+				startBtn.style.position = 'relative';
+				startBtn.style.zIndex = '9999';
+				
+				// Test if the button is actually receiving events
+				startBtn.addEventListener('mouseenter', function() {
+					console.log('Mouse entered button area');
+				});
+				
+				startBtn.addEventListener('mouseleave', function() {
+					console.log('Mouse left button area');
+				});
+				
+				// Add a global click listener to see what's being clicked
+				document.addEventListener('click', function(e) {
+					console.log('Document click detected on element:', e.target);
+					console.log('Element classes:', e.target.className);
+					console.log('Element ID:', e.target.id);
+				});
+				
+				startBtn.addEventListener('click', function(e) {
+					e.preventDefault();
+					console.log('START BUTTON CLICKED - SIMPLE VERSION!');
+					
+					// Generate random meeting code
+					const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+					console.log('Generated code:', code);
+					
+					// Show toast notification
+					const toast = document.createElement('div');
+					toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#22c55e;color:white;padding:12px 24px;border-radius:8px;z-index:9999;';
+					toast.textContent = 'Creating meeting... Redirecting!';
+					document.body.appendChild(toast);
+					
+					// Redirect to pre-meeting setup page
+					setTimeout(() => {
+						console.log('Redirecting to:', `/premeeting.html?code=${code}&title=Instant Meeting`);
+						window.location.href = `/premeeting.html?code=${code}&title=Instant Meeting`;
+					}, 1000);
+					
+					return false;
+				});
+			}
+		});
 	</script>
   
 </body>
