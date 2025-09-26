@@ -522,7 +522,7 @@
     function setCode(c){ $('code').textContent = c ? `#${c}` : '(no code)'; }
     function randomCode(){ return Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
-    function mount(){
+    async function mount(){
       const code = getCode() || randomCode();
       if (!getCode()) {
         const url = new URL(location.href);
@@ -530,6 +530,9 @@
         history.replaceState(null, '', url);
       }
       setCode(code);
+
+      // Join this meeting via API
+      await joinThisMeeting(code);
 
       // Load meeting details from API
       loadMeetingDetails(code);
@@ -548,17 +551,141 @@
       // Add some fun startup effects
       setTimeout(() => {
         addChatMessage('system', '🎉 Meeting room ready! Share your code to invite others.');
-        showNotification('Meeting Started', 'Your meeting room is now active');
+        showNotification('Meeting Joined', 'You are now in the meeting');
       }, 1000);
       
-      // Simulate random join events (for demo)
-      setTimeout(() => {
-        if (Math.random() > 0.7) {
-          addParticipant('Guest User', false);
-          addChatMessage('system', '👋 Guest User joined the meeting');
-          showNotification('New Participant', 'Guest User joined');
+      // Start polling for participant updates
+      startParticipantPolling(code);
+      
+      // Handle page unload (when user leaves)
+      setupLeaveHandlers(code);
+    }
+    
+    function setupLeaveHandlers(code) {
+      // Handle browser close/refresh/navigate away
+      window.addEventListener('beforeunload', () => {
+        leaveMeeting(code);
+      });
+      
+      // Handle visibility change (tab switch, minimize)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          // User switched tabs or minimized - don't leave immediately
+          // Set a timeout to leave if they don't come back
+          setTimeout(() => {
+            if (document.visibilityState === 'hidden') {
+              leaveMeeting(code);
+            }
+          }, 30000); // Leave after 30 seconds of inactivity
         }
-      }, 10000);
+      });
+    }
+    
+    function leaveMeeting(code) {
+      const session = JSON.parse(localStorage.getItem('currentSession') || '{}');
+      
+      // Use sendBeacon for reliable delivery even during page unload
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/meeting/leave', JSON.stringify({
+          meeting_code: code,
+          session_id: session.session_id,
+          anonymous_name: 'Anonymous User'
+        }));
+      } else {
+        // Fallback for browsers without sendBeacon
+        fetch('/api/meeting/leave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            meeting_code: code,
+            session_id: session.session_id,
+            anonymous_name: 'Anonymous User'
+          }),
+          keepalive: true
+        }).catch(() => {
+          // Ignore errors during page unload
+        });
+      }
+      
+      localStorage.removeItem('currentSession');
+    }
+    
+    async function joinThisMeeting(code) {
+      try {
+        const response = await fetch('/api/meeting/join', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            meeting_code: code,
+            anonymous_name: 'Anonymous User',
+            session_id: Math.random().toString(36).substr(2, 9)
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('✅ Successfully joined meeting:', result.meeting);
+          // Store our session info for later use
+          localStorage.setItem('currentSession', JSON.stringify({
+            session_id: result.session_id,
+            meeting_code: code,
+            joined_at: new Date().toISOString()
+          }));
+          
+          // Update participants list
+          updateParticipantsList(result.meeting.participants || []);
+        } else {
+          console.error('❌ Failed to join meeting:', result.error);
+          showNotification('Error', result.error);
+        }
+      } catch (error) {
+        console.error('❌ Network error joining meeting:', error);
+        showNotification('Connection Error', 'Failed to join meeting');
+      }
+    }
+    
+    function startParticipantPolling(code) {
+      // Poll for participant updates every 5 seconds
+      setInterval(async () => {
+        try {
+          const response = await fetch(`/api/meeting/${code}`);
+          const result = await response.json();
+          
+          if (result.success && result.meeting) {
+            updateParticipantsList(result.meeting.participants || []);
+          }
+        } catch (error) {
+          console.log('Polling error (normal if server is down):', error.message);
+        }
+      }, 5000);
+    }
+    
+    function updateParticipantsList(participants) {
+      const list = $('list');
+      if (!list) return;
+      
+      // Clear current list
+      list.innerHTML = '';
+      
+      // Update participant count in title
+      const titleElement = document.querySelector('.section-title');
+      if (titleElement && titleElement.textContent.includes('Participants')) {
+        titleElement.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline; margin-right:8px;">
+            <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2"/>
+            <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+            <path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          Participants (${participants.length})
+        `;
+      }
+      
+      participants.forEach((participant, index) => {
+        addParticipant(participant.name, index === 0, participant.is_anonymous);
+      });
     }
     
     function addChatMessage(type, message) {
@@ -580,13 +707,18 @@
       chat.scrollTop = chat.scrollHeight;
     }
     
-    function addParticipant(name, isHost = false) {
+    function addParticipant(name, isHost = false, isAnonymous = true) {
       const list = $('list');
       const participant = document.createElement('div');
       participant.className = 'participant';
+      
+      const avatar = name.charAt(0).toUpperCase();
+      const displayName = name || 'Anonymous User';
+      const roleText = isHost ? ' (Host)' : (isAnonymous ? ' (Guest)' : '');
+      
       participant.innerHTML = `
-        <div class="participant-avatar">${name.charAt(0).toUpperCase()}</div>
-        <div class="participant-name">${name}${isHost ? ' (Host)' : ''}</div>
+        <div class="participant-avatar" style="background: ${getAvatarColor(name)}">${avatar}</div>
+        <div class="participant-name">${displayName}${roleText}</div>
       `;
       participant.style.opacity = '0';
       participant.style.transform = 'translateX(-20px)';
@@ -598,6 +730,25 @@
         participant.style.opacity = '1';
         participant.style.transform = 'translateX(0)';
       });
+    }
+    
+    function getAvatarColor(name) {
+      // Generate consistent color based on name
+      const colors = [
+        'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+        'linear-gradient(135deg, #ef4444, #f97316)',
+        'linear-gradient(135deg, #10b981, #059669)',
+        'linear-gradient(135deg, #8b5cf6, #ec4899)',
+        'linear-gradient(135deg, #06b6d4, #3b82f6)',
+        'linear-gradient(135deg, #f59e0b, #ef4444)'
+      ];
+      
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      
+      return colors[Math.abs(hash) % colors.length];
     }
     
     function showNotification(title, message) {
@@ -778,10 +929,35 @@
       initializeMedia();
 
       $('copy').onclick = async () => {
-        const share = `${location.origin}/meet.html?code=${encodeURIComponent(getCode())}`;
-        try { await navigator.clipboard.writeText(share); } catch {}
-        $('copy').textContent = 'Copied!';
-        setTimeout(()=> $('copy').textContent = 'Copy link', 1200);
+        const meetingUrl = `${location.origin}/?join=${encodeURIComponent(getCode())}`;
+        const inviteMessage = `🎉 Join my HangO meeting!\n\nMeeting Code: ${getCode()}\nDirect Link: ${meetingUrl}\n\nOr go to ${location.origin} and enter code: ${getCode()}`;
+        
+        try { 
+          await navigator.clipboard.writeText(inviteMessage);
+          $('copy').innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            Copied!
+          `;
+          $('copy').style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+          
+          showNotification('Link Copied!', 'Meeting invitation copied to clipboard');
+        } catch {
+          // Fallback if clipboard fails
+          showNotification('Share Meeting', `Meeting Code: ${getCode()}\nShare this code with others!`);
+        }
+        
+        setTimeout(() => {
+          $('copy').innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke="currentColor" stroke-width="2"/>
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            Copy Link
+          `;
+          $('copy').style.background = '';
+        }, 2000);
       };
 
       $('newCode').onclick = () => {

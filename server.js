@@ -343,6 +343,7 @@ app.post('/api/meeting/create', async (req, res) => {
   } catch (error) {
     console.error('❌ Meeting creation error:', error);
     res.status(400).json({
+      success: false,
       error: error.message || 'Failed to create meeting'
     });
   }
@@ -383,6 +384,7 @@ app.post('/api/meeting/join', async (req, res) => {
   } catch (error) {
     console.error('❌ Meeting join error:', error);
     res.status(400).json({
+      success: false,
       error: error.message || 'Failed to join meeting'
     });
   }
@@ -395,7 +397,7 @@ app.get('/api/meeting/:code', async (req, res) => {
     const meeting = await airtable.findMeetingByCode(code);
     
     if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' });
+      return res.status(404).json({ success: false, error: 'Meeting not found' });
     }
     
     res.json({
@@ -406,6 +408,7 @@ app.get('/api/meeting/:code', async (req, res) => {
   } catch (error) {
     console.error('❌ Get meeting error:', error);
     res.status(500).json({
+      success: false,
       error: 'Failed to get meeting details'
     });
   }

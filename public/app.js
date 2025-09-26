@@ -2,6 +2,17 @@
 document.addEventListener('DOMContentLoaded', function() {
   console.log('DOM fully loaded');
   
+  // Check for auto-join parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const joinCode = urlParams.get('join');
+  
+  if (joinCode) {
+    // Auto-join functionality
+    console.log('Auto-joining meeting with code:', joinCode);
+    autoJoinMeeting(joinCode);
+    return;
+  }
+  
   const msg = document.getElementById('heroMsg');
   const start = document.getElementById('startMeet');
   const join = document.getElementById('joinMeet');
@@ -38,6 +49,139 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function confetti(){ /* removed emoji confetti for a cleaner look */ }
+
+  async function autoJoinMeeting(code) {
+    // Show a nice joining message
+    document.body.innerHTML = `
+      <div style="
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+        padding: 20px;
+      ">
+        <div style="
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(10px);
+          padding: 40px;
+          border-radius: 20px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          max-width: 500px;
+        ">
+          <div style="
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(59, 130, 246, 0.3);
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            animation: spin 1s linear infinite;
+          "></div>
+          
+          <h1 style="margin: 0 0 10px; font-size: 24px;">Joining Meeting</h1>
+          <p style="margin: 0 0 20px; opacity: 0.8; font-size: 16px;">Meeting Code: <strong>${code}</strong></p>
+          <p style="margin: 0; opacity: 0.6; font-size: 14px;">Please wait while we connect you...</p>
+        </div>
+        
+        <style>
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+      </div>
+    `;
+    
+    try {
+      // First, try to join the meeting via API
+      const response = await fetch('/api/meeting/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          meeting_code: code.toUpperCase(),
+          anonymous_name: 'Anonymous User',
+          session_id: Math.random().toString(36).substr(2, 9)
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Success! Redirect to pre-meeting setup
+        setTimeout(() => {
+          window.location.href = `/premeeting.html?code=${encodeURIComponent(code.toUpperCase())}&title=Meeting ${code.toUpperCase()}`;
+        }, 1500);
+      } else {
+        throw new Error(result.error || 'Meeting not found');
+      }
+    } catch (error) {
+      // Show error and provide manual join option
+      document.body.innerHTML = `
+        <div style="
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+          color: white;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          text-align: center;
+          padding: 20px;
+        ">
+          <div style="
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 500px;
+          ">
+            <div style="
+              width: 60px;
+              height: 60px;
+              background: linear-gradient(135deg, #ef4444, #dc2626);
+              border-radius: 50%;
+              margin: 0 auto 20px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 24px;
+            ">⚠️</div>
+            
+            <h1 style="margin: 0 0 10px; font-size: 24px;">Meeting Not Found</h1>
+            <p style="margin: 0 0 20px; opacity: 0.8; font-size: 16px;">
+              Could not find meeting with code: <strong>${code}</strong>
+            </p>
+            <p style="margin: 0 0 30px; opacity: 0.6; font-size: 14px;">
+              The meeting may have ended or the code may be incorrect.
+            </p>
+            
+            <button onclick="window.location.href='/'" style="
+              background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+              color: white;
+              border: none;
+              padding: 12px 24px;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: transform 0.2s ease;
+            " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+              Go to Home Page
+            </button>
+          </div>
+        </div>
+      `;
+    }
+  }
 
   function showModal() {
     if (modal) {
@@ -261,75 +405,107 @@ document.addEventListener('DOMContentLoaded', function() {
       input.style.backgroundColor = 'rgba(37, 99, 235, 0.1)';
       
       try {
-        // Join meeting via API
-        const response = await fetch('/api/meeting/join', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            meeting_code: code,
-            anonymous_name: 'Anonymous User'
-          })
-        });
+        // First, check if meeting exists
+        const checkResponse = await fetch(`/api/meeting/${code}`);
+        const checkResult = await checkResponse.json();
         
-        const result = await response.json();
-        
-        if (result.success) {
-          // Success feedback
-          join.textContent = 'Success! ✓';
-          join.style.backgroundColor = '#22c55e';
-          join.style.color = 'white';
-          input.style.borderColor = '#22c55e';
-          input.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
+        if (checkResult.success && checkResult.meeting) {
+          // Meeting exists, join it
+          const joinResponse = await fetch('/api/meeting/join', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              meeting_code: code,
+              anonymous_name: 'Anonymous User',
+              session_id: Math.random().toString(36).substr(2, 9)
+            })
+          });
           
-          toast(`Joining meeting ${code}`);
+          const joinResult = await joinResponse.json();
           
-          setTimeout(() => {
-            window.location.href = `/premeeting.html?code=${encodeURIComponent(code)}&title=Meeting ${code}`;
-          }, 800);
+          if (joinResult.success) {
+            // Success feedback
+            join.textContent = 'Joining! ✓';
+            join.style.backgroundColor = '#22c55e';
+            join.style.color = 'white';
+            input.style.borderColor = '#22c55e';
+            input.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
+            
+            toast(`Joining meeting ${code}`);
+            
+            setTimeout(() => {
+              window.location.href = `/premeeting.html?code=${encodeURIComponent(code)}&title=${encodeURIComponent(checkResult.meeting.title || `Meeting ${code}`)}`;
+            }, 800);
+          } else {
+            throw new Error(joinResult.error || 'Failed to join meeting');
+          }
         } else {
-          // Error feedback
-          const errorMsg = result.error || 'Meeting not found';
-          toast(`Error: ${errorMsg}`);
+          // Meeting doesn't exist, create it first
+          join.textContent = 'Creating...';
+          toast(`Creating meeting ${code}...`);
           
-          // Visual error feedback
-          join.textContent = 'Not Found ✗';
-          join.style.backgroundColor = '#ef4444';
-          join.style.color = 'white';
-          input.style.borderColor = '#ef4444';
-          input.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+          const createResponse = await fetch('/api/meeting/create', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              meeting_code: code,
+              title: `Meeting ${code}`,
+              settings: {
+                enableVideo: true,
+                enableAudio: true,
+                allowScreenShare: true
+              },
+              anonymous_name: 'Anonymous User'
+            })
+          });
           
-          // Reset after delay
-          setTimeout(() => {
-            join.textContent = originalText;
-            join.disabled = code.length < 3;
-            join.style.backgroundColor = '';
-            join.style.color = '';
-            join.style.opacity = '';
-            input.style.borderColor = code.length >= 3 ? '#22c55e' : '';
-            input.style.backgroundColor = code.length >= 3 ? 'rgba(34, 197, 94, 0.1)' : '';
-          }, 2000);
+          const createResult = await createResponse.json();
+          
+          if (createResult.success) {
+            // Meeting created, now join it
+            join.textContent = 'Joining! ✓';
+            join.style.backgroundColor = '#22c55e';
+            join.style.color = 'white';
+            input.style.borderColor = '#22c55e';
+            input.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
+            
+            toast(`Meeting ${code} created! Joining...`);
+            
+            setTimeout(() => {
+              window.location.href = `/premeeting.html?code=${encodeURIComponent(code)}&title=${encodeURIComponent(`Meeting ${code}`)}`;
+            }, 800);
+          } else {
+            throw new Error(createResult.error || 'Failed to create meeting');
+          }
         }
       } catch (error) {
-        console.error('Meeting join error:', error);
-        toast('Connection failed. Please check your internet and try again.');
+        console.error('Meeting join/create error:', error);
         
-        // Network error feedback
-        join.textContent = 'Try Again';
-        join.style.backgroundColor = '#f59e0b';
+        // Error feedback
+        const errorMsg = error.message || 'Connection failed';
+        toast(`Error: ${errorMsg}`);
+        
+        // Visual error feedback
+        join.textContent = 'Failed ✗';
+        join.style.backgroundColor = '#ef4444';
         join.style.color = 'white';
+        input.style.borderColor = '#ef4444';
+        input.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
         
         // Reset after delay
         setTimeout(() => {
           join.textContent = originalText;
-          join.disabled = false;
+          join.disabled = code.length < 3;
           join.style.backgroundColor = '';
           join.style.color = '';
           join.style.opacity = '';
-          input.style.borderColor = '';
-          input.style.backgroundColor = '';
-        }, 3000);
+          input.style.borderColor = code.length >= 3 ? '#22c55e' : '';
+          input.style.backgroundColor = code.length >= 3 ? 'rgba(34, 197, 94, 0.1)' : '';
+        }, 2000);
       }
     };
   }

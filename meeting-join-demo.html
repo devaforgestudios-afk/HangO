@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HangO Meeting Join Demo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      color: white;
+      margin: 0;
+      padding: 40px;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    h1 { margin-top: 0; }
+    
+    .demo-section {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+    }
+    
+    .demo-link {
+      display: inline-block;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: white;
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      margin: 8px;
+      transition: transform 0.2s ease;
+    }
+    
+    .demo-link:hover {
+      transform: scale(1.05);
+    }
+    
+    .code-snippet {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      margin: 10px 0;
+      overflow-x: auto;
+    }
+    
+    .feature-list {
+      list-style: none;
+      padding: 0;
+    }
+    
+    .feature-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .feature-list li:before {
+      content: "✅ ";
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎉 HangO Meeting System - Join Demo</h1>
+    
+    <p>The meeting join functionality is now fully implemented! People can join meetings in multiple ways:</p>
+    
+    <div class="demo-section">
+      <h2>🔗 Auto-Join Links</h2>
+      <p>When someone clicks a meeting link with the join parameter, they'll automatically be taken to the meeting:</p>
+      <div class="code-snippet">
+        https://yourdomain.com/?join=ABC123
+      </div>
+      <p>Try these demo links (they'll show the auto-join flow):</p>
+      <a href="/?join=DEMO01" class="demo-link">Join Demo Meeting 1</a>
+      <a href="/?join=DEMO02" class="demo-link">Join Demo Meeting 2</a>
+    </div>
+    
+    <div class="demo-section">
+      <h2>📝 Manual Code Entry</h2>
+      <p>Users can also manually enter meeting codes on the home page:</p>
+      <a href="/" class="demo-link">Go to Home Page & Enter Code</a>
+    </div>
+    
+    <div class="demo-section">
+      <h2>🚀 What Happens When Someone Joins</h2>
+      <ul class="feature-list">
+        <li>Auto-join page shows loading animation</li>
+        <li>System validates meeting code via API</li>
+        <li>User is added to participant list</li>
+        <li>Redirected to pre-meeting setup page</li>
+        <li>Then enters the main meeting room</li>
+        <li>Other participants see them join in real-time</li>
+        <li>Chat gets a "user joined" notification</li>
+        <li>Participant count updates automatically</li>
+      </ul>
+    </div>
+    
+    <div class="demo-section">
+      <h2>👥 Real-Time Features</h2>
+      <ul class="feature-list">
+        <li>Live participant list updates every 5 seconds</li>
+        <li>Users automatically leave when closing browser</li>
+        <li>Colorful avatars generated for each participant</li>
+        <li>Guest users can join alongside authenticated users</li>
+        <li>Session-based tracking prevents duplicate entries</li>
+        <li>Clean animations for joining/leaving</li>
+      </ul>
+    </div>
+    
+    <div class="demo-section">
+      <h2>📋 Enhanced Copy & Share</h2>
+      <p>Meeting hosts can easily share their meetings:</p>
+      <div class="code-snippet">
+🎉 Join my HangO meeting!
+
+Meeting Code: ABC123
+Direct Link: https://yourdomain.com/?join=ABC123
+
+Or go to https://yourdomain.com and enter code: ABC123
+      </div>
+    </div>
+    
+    <div class="demo-section">
+      <h2>🔧 To Test Full Functionality</h2>
+      <ol>
+        <li>Start the server: <code>node server.js</code></li>
+        <li>Create a meeting from the home page</li>
+        <li>Copy the meeting link</li>
+        <li>Open it in an incognito/private browser window</li>
+        <li>Watch the real-time participant updates!</li>
+      </ol>
+    </div>
+    
+    <p style="margin-top: 40px; text-align: center; opacity: 0.8;">
+      <strong>The meeting system now supports multiple participants joining and leaving in real-time! 🎉</strong>
+    </p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HangO - Test Join Function</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      color: white;
+      margin: 0;
+      padding: 40px;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .test-container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      text-align: center;
+      max-width: 500px;
+    }
+    
+    input {
+      padding: 12px;
+      font-size: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      margin: 10px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      width: 200px;
+    }
+    
+    input::placeholder { color: rgba(255, 255, 255, 0.5); }
+    
+    button {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 10px;
+      transition: transform 0.2s ease;
+    }
+    
+    button:hover { transform: scale(1.05); }
+    button:disabled { 
+      opacity: 0.5; 
+      cursor: not-allowed; 
+      transform: none;
+    }
+    
+    .status {
+      margin: 20px 0;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="test-container">
+    <h1>🎯 Test Join Function</h1>
+    
+    <p>Enter a meeting code to test the join functionality:</p>
+    
+    <div>
+      <input 
+        type="text" 
+        id="meetingCode" 
+        placeholder="ENTER CODE" 
+        maxlength="8"
+        style="margin-right: 10px;"
+      />
+      <button id="joinButton">Join Meeting</button>
+    </div>
+    
+    <div>
+      <button id="createTestButton" style="background: linear-gradient(135deg, #10b981, #059669);">
+        Create Test Meeting
+      </button>
+    </div>
+    
+    <div class="status" id="status">Ready to test</div>
+    
+    <div style="margin-top: 30px; font-size: 12px; opacity: 0.6;">
+      <p>How it works:</p>
+      <ul style="text-align: left; display: inline-block;">
+        <li>If meeting exists → Join it</li>
+        <li>If meeting doesn't exist → Create it first, then join</li>
+        <li>Invalid code → Show error message</li>
+        <li>Network error → Show retry option</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const input = $('meetingCode');
+    const joinBtn = $('joinButton');
+    const createBtn = $('createTestButton');
+    const status = $('status');
+    
+    function updateStatus(text, color = 'white') {
+      status.textContent = text;
+      status.style.color = color;
+    }
+    
+    function randomCode() {
+      return Math.random().toString(36).slice(2, 8).toUpperCase();
+    }
+    
+    // Create test meeting
+    createBtn.onclick = async () => {
+      const code = randomCode();
+      updateStatus('Creating test meeting...', '#f59e0b');
+      
+      try {
+        const response = await fetch('/api/meeting/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            meeting_code: code,
+            title: `Test Meeting ${code}`,
+            settings: {
+              enableVideo: true,
+              enableAudio: true,
+              allowScreenShare: true
+            },
+            anonymous_name: 'Test User'
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          input.value = code;
+          updateStatus(`✅ Test meeting created: ${code}`, '#22c55e');
+        } else {
+          updateStatus(`❌ Failed: ${result.error}`, '#ef4444');
+        }
+      } catch (error) {
+        updateStatus(`❌ Network error: ${error.message}`, '#ef4444');
+      }
+    };
+    
+    // Join meeting function
+    joinBtn.onclick = async () => {
+      const code = input.value.trim().toUpperCase();
+      
+      if (!code) {
+        updateStatus('❌ Please enter a meeting code', '#ef4444');
+        input.focus();
+        return;
+      }
+      
+      if (!/^[A-Z0-9]{3,8}$/.test(code)) {
+        updateStatus('❌ Invalid code format (3-8 letters/numbers)', '#ef4444');
+        input.focus();
+        return;
+      }
+      
+      const originalText = joinBtn.textContent;
+      joinBtn.textContent = 'Checking...';
+      joinBtn.disabled = true;
+      updateStatus('🔍 Checking if meeting exists...', '#3b82f6');
+      
+      try {
+        // Check if meeting exists
+        const checkResponse = await fetch(`/api/meeting/${code}`);
+        const checkResult = await checkResponse.json();
+        
+        if (checkResult.success && checkResult.meeting) {
+          // Meeting exists, join it
+          updateStatus('📞 Meeting found! Joining...', '#22c55e');
+          joinBtn.textContent = 'Joining...';
+          
+          const joinResponse = await fetch('/api/meeting/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              meeting_code: code,
+              anonymous_name: 'Test User',
+              session_id: Math.random().toString(36).substr(2, 9)
+            })
+          });
+          
+          const joinResult = await joinResponse.json();
+          
+          if (joinResult.success) {
+            updateStatus(`✅ Successfully joined: ${code}`, '#22c55e');
+            joinBtn.textContent = 'Success! ✓';
+            
+            setTimeout(() => {
+              window.location.href = `/premeeting.html?code=${encodeURIComponent(code)}&title=${encodeURIComponent(checkResult.meeting.title || `Meeting ${code}`)}`;
+            }, 1500);
+          } else {
+            throw new Error(joinResult.error || 'Failed to join meeting');
+          }
+        } else {
+          // Meeting doesn't exist, create it first
+          updateStatus('🔨 Meeting not found. Creating new meeting...', '#f59e0b');
+          joinBtn.textContent = 'Creating...';
+          
+          const createResponse = await fetch('/api/meeting/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              meeting_code: code,
+              title: `Meeting ${code}`,
+              settings: {
+                enableVideo: true,
+                enableAudio: true,
+                allowScreenShare: true
+              },
+              anonymous_name: 'Test User'
+            })
+          });
+          
+          const createResult = await createResponse.json();
+          
+          if (createResult.success) {
+            updateStatus(`✅ Meeting created and joined: ${code}`, '#22c55e');
+            joinBtn.textContent = 'Success! ✓';
+            
+            setTimeout(() => {
+              window.location.href = `/premeeting.html?code=${encodeURIComponent(code)}&title=${encodeURIComponent(`Meeting ${code}`)}`;
+            }, 1500);
+          } else {
+            throw new Error(createResult.error || 'Failed to create meeting');
+          }
+        }
+      } catch (error) {
+        console.error('Join error:', error);
+        updateStatus(`❌ Error: ${error.message}`, '#ef4444');
+        joinBtn.textContent = 'Try Again';
+        
+        setTimeout(() => {
+          joinBtn.textContent = originalText;
+          joinBtn.disabled = false;
+        }, 2000);
+      }
+    };
+    
+    // Auto-focus and validation
+    input.focus();
+    input.addEventListener('input', (e) => {
+      e.target.value = e.target.value.toUpperCase();
+      joinBtn.disabled = !e.target.value.trim();
+    });
+    
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !joinBtn.disabled) {
+        joinBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>
