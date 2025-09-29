@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HangO — Meeting</title>
   <link rel="stylesheet" href="/styles.css" />
+  <script src="/socket.io/socket.io.js"></script>
   <style>
     /* Meeting-specific styles for immersive experience */
     body {
@@ -108,11 +109,51 @@
       transition: all 0.2s ease;
       font-size: 14px;
       font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     
     .header-btn:hover {
       background: rgba(255, 255, 255, 0.2);
       transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    
+    #copy {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border: 1px solid rgba(59, 130, 246, 0.5);
+      font-weight: 600;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    #copy:hover {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+    }
+    
+    #copy:active {
+      transform: translateY(0);
+    }
+    
+    #copy::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+      transform: rotate(45deg);
+      transition: all 0.6s ease;
+      opacity: 0;
+    }
+    
+    #copy:hover::before {
+      opacity: 1;
+      transform: rotate(45deg) translate(50%, 50%);
     }
     
     .leave-btn {
@@ -392,14 +433,7 @@
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke="currentColor" stroke-width="2"/>
             <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
           </svg>
-          Copy Link
-        </button>
-        <button id="newCode" class="header-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2"/>
-            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-          </svg>
-          New Code
+          Copy Invite Link
         </button>
         <button class="leave-btn" onclick="window.location.href='/'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -415,13 +449,13 @@
       <!-- Video Area -->
       <div class="video-area">
         <video id="localVideo" class="main-video" autoplay muted playsinline style="display:none;"></video>
-        <div id="videoPlaceholder" class="video-placeholder">
+        <div id="videoPlaceholder" class="video-placeholder" onclick="enableCamera()" style="cursor: pointer;">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="3" y="7" width="12" height="10" rx="2" stroke="currentColor" stroke-width="2"/>
             <path d="M15 10l5-3v10l-5-3v-4Z" fill="currentColor"/>
           </svg>
           <h3 style="margin:0; color:#64748b;">Camera is off</h3>
-          <p style="margin:0; color:#475569;">Enable your camera to start the meeting</p>
+          <p style="margin:0; color:#475569;">Click here or use the camera button to enable your camera</p>
         </div>
         
         <!-- Connection Status Overlay -->
@@ -479,7 +513,6 @@
       </div>
     </main>
 
-    <!-- Controls Bar -->
     <div class="controls-bar">
       <button id="btnMic" class="control-btn active" aria-pressed="true" title="Microphone">
         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -519,8 +552,21 @@
       const p = new URLSearchParams(location.search);
       return (p.get('code')||'').toUpperCase();
     }
+    function getUrlParam(param){ 
+      const p = new URLSearchParams(location.search);
+      return p.get(param);
+    }
     function setCode(c){ $('code').textContent = c ? `#${c}` : '(no code)'; }
     function randomCode(){ return Math.random().toString(36).slice(2, 8).toUpperCase(); }
+
+    // Initialize Socket.IO connection
+    const socket = io();
+    let currentMeetingCode = null;
+    let currentUserInfo = {
+      name: getUrlParam('user') || 'Anonymous User',
+      isAnonymous: !getUrlParam('user'),
+      userId: Math.random().toString(36).substr(2, 9)
+    };
 
     async function mount(){
       const code = getCode() || randomCode();
@@ -534,10 +580,8 @@
       // Join this meeting via API
       await joinThisMeeting(code);
 
-      // Load meeting details from API
       loadMeetingDetails(code);
 
-      // Apply initial device settings from localStorage (fallback)
       const meetingSettings = JSON.parse(localStorage.getItem('meetingSettings') || '{}');
       if (meetingSettings.enableVideo === false) {
         const btnCam = $('btnCam');
@@ -548,35 +592,30 @@
         if (btnMic) toggle(btnMic);
       }
 
-      // Add some fun startup effects
       setTimeout(() => {
         addChatMessage('system', '🎉 Meeting room ready! Share your code to invite others.');
         showNotification('Meeting Joined', 'You are now in the meeting');
       }, 1000);
       
-      // Start polling for participant updates
       startParticipantPolling(code);
       
-      // Handle page unload (when user leaves)
       setupLeaveHandlers(code);
     }
     
     function setupLeaveHandlers(code) {
-      // Handle browser close/refresh/navigate away
+
       window.addEventListener('beforeunload', () => {
         leaveMeeting(code);
       });
       
-      // Handle visibility change (tab switch, minimize)
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-          // User switched tabs or minimized - don't leave immediately
-          // Set a timeout to leave if they don't come back
+         
           setTimeout(() => {
             if (document.visibilityState === 'hidden') {
               leaveMeeting(code);
             }
-          }, 30000); // Leave after 30 seconds of inactivity
+          }, 30000); 
         }
       });
     }
@@ -584,7 +623,7 @@
     function leaveMeeting(code) {
       const session = JSON.parse(localStorage.getItem('currentSession') || '{}');
       
-      // Use sendBeacon for reliable delivery even during page unload
+      
       if (navigator.sendBeacon) {
         navigator.sendBeacon('/api/meeting/leave', JSON.stringify({
           meeting_code: code,
@@ -592,7 +631,7 @@
           anonymous_name: 'Anonymous User'
         }));
       } else {
-        // Fallback for browsers without sendBeacon
+      
         fetch('/api/meeting/leave', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -603,7 +642,7 @@
           }),
           keepalive: true
         }).catch(() => {
-          // Ignore errors during page unload
+          
         });
       }
       
@@ -612,6 +651,7 @@
     
     async function joinThisMeeting(code) {
       try {
+        // First, join via HTTP API to ensure meeting exists and add to database
         const response = await fetch('/api/meeting/join', {
           method: 'POST',
           headers: {
@@ -619,58 +659,337 @@
           },
           body: JSON.stringify({
             meeting_code: code,
-            anonymous_name: 'Anonymous User',
-            session_id: Math.random().toString(36).substr(2, 9)
+            anonymous_name: currentUserInfo.name,
+            session_id: currentUserInfo.userId
           })
         });
         
         const result = await response.json();
         
         if (result.success) {
-          console.log('✅ Successfully joined meeting:', result.meeting);
-          // Store our session info for later use
+          console.log('✅ Successfully joined meeting via API:', result.meeting);
+          
+          // Store session info
           localStorage.setItem('currentSession', JSON.stringify({
-            session_id: result.session_id,
+            session_id: currentUserInfo.userId,
             meeting_code: code,
             joined_at: new Date().toISOString()
           }));
           
-          // Update participants list
-          updateParticipantsList(result.meeting.participants || []);
+          // Now join the real-time Socket.IO room
+          currentMeetingCode = code;
+          socket.emit('join-meeting', {
+            meetingCode: code,
+            userInfo: {
+              id: currentUserInfo.userId,
+              name: currentUserInfo.name,
+              avatar: currentUserInfo.name.charAt(0).toUpperCase(),
+              isHost: false,
+              isAnonymous: currentUserInfo.isAnonymous
+            }
+          });
+          
         } else {
           console.error('❌ Failed to join meeting:', result.error);
-          showNotification('Error', result.error);
+          showNotification('Join Failed', result.error || 'Unable to join the meeting');
+          
+          const statusElement = $('connectionStatus');
+          if (statusElement) {
+            statusElement.innerHTML = `
+              <div class="status-indicator">
+                <div class="status-dot disconnected" style="width:8px; height:8px; border-radius:50%; background:#ef4444; margin-right:8px; display:inline-block;"></div>
+                <span>Failed to join: ${result.error}</span>
+              </div>
+            `;
+          }
         }
       } catch (error) {
         console.error('❌ Network error joining meeting:', error);
-        showNotification('Connection Error', 'Failed to join meeting');
+        showNotification('Connection Error', 'Failed to connect to meeting server');
+        
+        const statusElement = $('connectionStatus');
+        if (statusElement) {
+          statusElement.innerHTML = `
+            <div class="status-indicator">
+              <div class="status-dot disconnected" style="width:8px; height:8px; border-radius:50%; background:#ef4444; margin-right:8px; display:inline-block;"></div>
+              <span>Connection failed - check network</span>
+            </div>
+          `;
+        }
       }
     }
     
+    let participantPollInterval = null;
+
+    // Socket.IO Event Listeners for real-time communication
+    socket.on('meeting-joined', (data) => {
+      console.log('🎉 Joined meeting successfully:', data);
+      showNotification('Meeting Joined', `Welcome to ${data.meeting.title}!`);
+      
+      // Load chat history if available
+      if (data.chatHistory && data.chatHistory.length > 0) {
+        data.chatHistory.forEach(msg => {
+          if (msg.isSystem) {
+            addChatMessage('system', msg.message);
+          } else {
+            addChatMessageRealtime(msg.sender, msg.message, msg.timestamp, msg.isAnonymous);
+          }
+        });
+      }
+      
+      // Update status indicator
+      const statusElement = $('connectionStatus');
+      if (statusElement) {
+        statusElement.innerHTML = `
+          <div class="status-indicator">
+            <div class="status-dot connected" style="width:8px; height:8px; border-radius:50%; background:#22c55e; margin-right:8px; display:inline-block;"></div>
+            <span>Connected • ${data.meeting.meeting_code} • ${data.participantCount} participants</span>
+          </div>
+        `;
+      }
+    });
+
+    socket.on('participants-update', (data) => {
+      console.log('👥 Received participants list:', data.participants);
+      updateParticipantsListRealtime(data.participants);
+    });
+
+    socket.on('participant-joined', (data) => {
+      console.log('👋 New participant joined:', data.participant.name);
+      showNotification('Participant Joined', `${data.participant.name} joined the meeting`);
+      
+      // Update participant count in status
+      const statusElement = $('connectionStatus');
+      if (statusElement && currentMeetingCode) {
+        statusElement.innerHTML = `
+          <div class="status-indicator">
+            <div class="status-dot connected" style="width:8px; height:8px; border-radius:50%; background:#22c55e; margin-right:8px; display:inline-block;"></div>
+            <span>Connected • ${currentMeetingCode} • ${data.participantCount} participants</span>
+          </div>
+        `;
+      }
+    });
+
+    socket.on('participant-left', (data) => {
+      console.log('👋 Participant left:', data.participant.name);
+      showNotification('Participant Left', `${data.participant.name} left the meeting`);
+      
+      // Update participant count in status
+      const statusElement = $('connectionStatus');
+      if (statusElement && currentMeetingCode) {
+        statusElement.innerHTML = `
+          <div class="status-indicator">
+            <div class="status-dot connected" style="width:8px; height:8px; border-radius:50%; background:#22c55e; margin-right:8px; display:inline-block;"></div>
+            <span>Connected • ${currentMeetingCode} • ${data.participantCount} participants</span>
+          </div>
+        `;
+      }
+    });
+
+    socket.on('chat-message', (data) => {
+      console.log('💬 Received chat message:', data);
+      addChatMessageRealtime(data.sender, data.message, data.timestamp, data.isAnonymous);
+    });
+
+    socket.on('participant-media-update', (data) => {
+      console.log('🎥 Participant media state changed:', data);
+      // Update participant media indicators in the UI
+      updateParticipantMediaState(data.participantId, data.participantName, data.mediaState);
+    });
+
+    socket.on('screen-share-update', (data) => {
+      console.log('📺 Screen share update:', data);
+      showNotification('Screen Share', 
+        data.sharing ? `${data.participantName} started sharing` : `${data.participantName} stopped sharing`);
+    });
+
+    socket.on('meeting-error', (data) => {
+      console.error('❌ Meeting error:', data);
+      showNotification('Meeting Error', data.message);
+    });
+
+    socket.on('error', (data) => {
+      console.error('❌ Socket error:', data);
+      showNotification('Error', data.message);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('🔌 Disconnected from server');
+      showNotification('Disconnected', 'Connection to server lost');
+      
+      const statusElement = $('connectionStatus');
+      if (statusElement) {
+        statusElement.innerHTML = `
+          <div class="status-indicator">
+            <div class="status-dot disconnected" style="width:8px; height:8px; border-radius:50%; background:#ef4444; margin-right:8px; display:inline-block;"></div>
+            <span>Disconnected - trying to reconnect...</span>
+          </div>
+        `;
+      }
+    });
+
+    socket.on('reconnect', () => {
+      console.log('🔌 Reconnected to server');
+      showNotification('Reconnected', 'Connection restored');
+      
+      // Rejoin the meeting if we were in one
+      if (currentMeetingCode) {
+        socket.emit('join-meeting', {
+          meetingCode: currentMeetingCode,
+          userInfo: currentUserInfo
+        });
+      }
+    });
+    
     function startParticipantPolling(code) {
-      // Poll for participant updates every 5 seconds
-      setInterval(async () => {
+      if (participantPollInterval) {
+        clearInterval(participantPollInterval);
+      }
+      
+    
+      participantPollInterval = setInterval(async () => {
         try {
           const response = await fetch(`/api/meeting/${code}`);
           const result = await response.json();
           
           if (result.success && result.meeting) {
+            console.log('Fetched meeting data:', result.meeting);
             updateParticipantsList(result.meeting.participants || []);
+            
+            const statusElement = $('connectionStatus');
+            if (statusElement && result.meeting.status === 'active') {
+              statusElement.innerHTML = `
+                <div class="status-indicator">
+                  <div class="status-dot connected" style="width:8px; height:8px; border-radius:50%; background:#22c55e; margin-right:8px; display:inline-block;"></div>
+                  <span>Connected • ${code} • ${result.meeting.participants ? result.meeting.participants.length : 0} participants</span>
+                </div>
+              `;
+            }
+          } else {
+            console.log('Meeting not found or inactive:', result);
+            if (!result.success && result.error === 'Meeting not found') {
+              showNotification('Meeting Ended', 'This meeting has ended or been removed');
+              clearInterval(participantPollInterval);
+            }
           }
         } catch (error) {
-          console.log('Polling error (normal if server is down):', error.message);
+          console.log('Polling error:', error.message);
+          
         }
-      }, 5000);
+      }, 3000);
+      
+      setTimeout(() => {
+        fetch(`/api/meeting/${code}`)
+          .then(response => response.json())
+          .then(result => {
+            if (result.success && result.meeting) {
+              updateParticipantsList(result.meeting.participants || []);
+            }
+          })
+          .catch(error => console.log('Initial poll error:', error));
+      }, 500);
     }
     
     function updateParticipantsList(participants) {
       const list = $('list');
       if (!list) return;
       
-      // Clear current list
+      console.log('Updating participants list:', participants);
+      
       list.innerHTML = '';
       
-      // Update participant count in title
+      const titleElement = document.querySelector('.section-title');
+      if (titleElement && titleElement.textContent.includes('Participants')) {
+        titleElement.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline; margin-right:8px;">
+            <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2"/>
+            <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+            <path d="M22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          Participants (${participants.length || 0})
+        `;
+      }
+      
+      // Add participants to list
+      if (participants && participants.length > 0) {
+        participants.forEach((participant, index) => {
+          addParticipant(participant.name || 'Anonymous User', index === 0, participant.is_anonymous);
+        });
+      } else {
+        addParticipant('You (Host)', true, false);
+      }
+    }
+
+    function addParticipant(name, isHost = false, isAnonymous = true) {
+      const list = $('list');
+      if (!list) return;
+      
+      const participantElement = document.createElement('div');
+      participantElement.className = 'participant';
+      
+      const avatar = name.charAt(0).toUpperCase();
+      const statusIndicator = isHost ? ' (Host)' : '';
+      
+      participantElement.innerHTML = `
+        <div class="participant-avatar" style="
+          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          color: white;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 14px;
+          margin-right: 12px;
+        ">${avatar}</div>
+        <div class="participant-info" style="flex: 1;">
+          <div class="participant-name" style="font-weight: 500; color: rgba(255, 255, 255, 0.9);">
+            ${name}${statusIndicator}
+          </div>
+          <div class="participant-status" style="font-size: 12px; color: rgba(255, 255, 255, 0.6);">
+            ${isAnonymous ? 'Guest' : 'Member'} • Online
+          </div>
+        </div>
+        <div class="participant-controls" style="display: flex; gap: 4px;">
+          <div style="
+            width: 6px;
+            height: 6px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+          " title="Audio enabled"></div>
+          <div style="
+            width: 6px;
+            height: 6px;
+            background: #3b82f6;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+          " title="Video enabled"></div>
+        </div>
+      `;
+      
+      participantElement.style.opacity = '0';
+      participantElement.style.transform = 'translateX(-10px)';
+      participantElement.style.transition = 'all 0.3s ease';
+      
+      list.appendChild(participantElement);
+      
+      setTimeout(() => {
+        participantElement.style.opacity = '1';
+        participantElement.style.transform = 'translateX(0)';
+      }, 50);
+    }
+
+    function updateParticipantsListRealtime(participants) {
+      const list = $('list');
+      if (!list) return;
+      
+      console.log('Updating participants list (real-time):', participants);
+      
+      list.innerHTML = '';
+      
       const titleElement = document.querySelector('.section-title');
       if (titleElement && titleElement.textContent.includes('Participants')) {
         titleElement.innerHTML = `
@@ -683,9 +1002,91 @@
         `;
       }
       
-      participants.forEach((participant, index) => {
-        addParticipant(participant.name, index === 0, participant.is_anonymous);
+      participants.forEach((participant) => {
+        const isCurrentUser = participant.socketId === socket.id || participant.name === currentUserInfo.name;
+        addParticipantRealtime(participant, isCurrentUser);
       });
+    }
+
+    function addParticipantRealtime(participant, isCurrentUser = false) {
+      const list = $('list');
+      if (!list) return;
+      
+      const participantElement = document.createElement('div');
+      participantElement.className = 'participant';
+      participantElement.id = `participant-${participant.socketId}`;
+      
+      const avatar = participant.name.charAt(0).toUpperCase();
+      const statusIndicator = isCurrentUser ? ' (You)' : '';
+      
+      participantElement.innerHTML = `
+        <div class="participant-avatar" style="
+          background: linear-gradient(135deg, ${isCurrentUser ? '#22c55e, #16a34a' : '#3b82f6, #8b5cf6'});
+          color: white;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 14px;
+          margin-right: 12px;
+        ">${avatar}</div>
+        <div class="participant-info" style="flex: 1;">
+          <div class="participant-name" style="font-weight: 500; color: rgba(255, 255, 255, 0.9);">
+            ${participant.name}${statusIndicator}
+          </div>
+          <div class="participant-status" style="font-size: 12px; color: rgba(255, 255, 255, 0.6);">
+            ${participant.isAnonymous ? 'Guest' : 'Member'} • Online
+          </div>
+        </div>
+        <div class="participant-controls" id="media-${participant.socketId}" style="display: flex; gap: 4px;">
+          <div class="media-indicator audio-indicator" style="
+            width: 6px;
+            height: 6px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+          " title="Audio enabled"></div>
+          <div class="media-indicator video-indicator" style="
+            width: 6px;
+            height: 6px;
+            background: #3b82f6;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+          " title="Video enabled"></div>
+        </div>
+      `;
+      
+      participantElement.style.opacity = '0';
+      participantElement.style.transform = 'translateX(-10px)';
+      participantElement.style.transition = 'all 0.3s ease';
+      
+      list.appendChild(participantElement);
+      
+      setTimeout(() => {
+        participantElement.style.opacity = '1';
+        participantElement.style.transform = 'translateX(0)';
+      }, 50);
+    }
+
+    function updateParticipantMediaState(participantId, participantName, mediaState) {
+      const mediaControls = $(`media-${participantId}`);
+      if (!mediaControls) return;
+      
+      const audioIndicator = mediaControls.querySelector('.audio-indicator');
+      const videoIndicator = mediaControls.querySelector('.video-indicator');
+      
+      if (audioIndicator) {
+        audioIndicator.style.background = mediaState.audio ? '#22c55e' : '#ef4444';
+        audioIndicator.title = mediaState.audio ? 'Audio enabled' : 'Audio disabled';
+      }
+      
+      if (videoIndicator) {
+        videoIndicator.style.background = mediaState.video ? '#3b82f6' : '#ef4444';
+        videoIndicator.title = mediaState.video ? 'Video enabled' : 'Video disabled';
+      }
     }
     
     function addChatMessage(type, message) {
@@ -699,6 +1100,37 @@
       
       chat.appendChild(line);
       
+      requestAnimationFrame(() => {
+        line.style.opacity = '1';
+        line.style.transform = 'translateY(0)';
+      });
+      
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addChatMessageRealtime(sender, message, timestamp, isAnonymous) {
+      const chat = $('chat');
+      const line = document.createElement('div');
+      line.className = 'chat-message user';
+      
+      const time = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const isCurrentUser = sender === currentUserInfo.name;
+      
+      line.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+          <span style="font-weight: 500; color: ${isCurrentUser ? '#22c55e' : '#3b82f6'};">
+            ${sender}${isCurrentUser ? ' (You)' : ''}
+          </span>
+          <span style="font-size: 11px; color: rgba(255, 255, 255, 0.5);">${time}</span>
+        </div>
+        <div style="color: rgba(255, 255, 255, 0.9); line-height: 1.4;">${message}</div>
+      `;
+      
+      line.style.opacity = '0';
+      line.style.transform = 'translateY(10px)';
+      line.style.transition = 'all 0.3s ease';
+      
+      chat.appendChild(line);
       requestAnimationFrame(() => {
         line.style.opacity = '1';
         line.style.transform = 'translateY(0)';
@@ -733,7 +1165,6 @@
     }
     
     function getAvatarColor(name) {
-      // Generate consistent color based on name
       const colors = [
         'linear-gradient(135deg, #3b82f6, #8b5cf6)',
         'linear-gradient(135deg, #ef4444, #f97316)',
@@ -801,7 +1232,6 @@
             titleElement.textContent = meeting.title;
           }
           
-          // Apply meeting settings if available
           const settings = meeting.settings || {};
           if (settings.enableVideo === false) {
             const btnCam = $('btnCam');
@@ -814,10 +1244,8 @@
           
           console.log('Meeting loaded:', meeting);
         } else {
-          // Meeting might not exist yet, that's okay for new meetings
           console.log('Meeting not found, creating new session');
           
-          // Load from localStorage as fallback
           const meetingSettings = JSON.parse(localStorage.getItem('meetingSettings') || '{}');
           const titleElement = $('meetingTitle');
           if (titleElement && meetingSettings.title) {
@@ -827,7 +1255,6 @@
       } catch (error) {
         console.error('Error loading meeting details:', error);
         
-        // Fallback to localStorage
         const meetingSettings = JSON.parse(localStorage.getItem('meetingSettings') || '{}');
         const titleElement = $('meetingTitle');
         if (titleElement && meetingSettings.title) {
@@ -842,7 +1269,6 @@
         if (btnMic) toggle(btnMic);
       }
 
-      // Update connection status
       setTimeout(() => {
         const statusElement = $('connectionStatus');
         if (statusElement) {
@@ -855,40 +1281,96 @@
         }
       }, 1500);
 
-      // WebRTC setup
       let localStream = null;
+      // Enable video and audio by default unless explicitly disabled
       let isVideoEnabled = meetingSettings.enableVideo !== false;
       let isAudioEnabled = meetingSettings.enableAudio !== false;
+      
+      // Force video to be enabled if no settings exist
+      if (typeof meetingSettings.enableVideo === 'undefined') {
+        isVideoEnabled = true;
+      }
 
       async function initializeMedia() {
         try {
+          console.log('🎥 Initializing media with video:', isVideoEnabled, 'audio:', isAudioEnabled);
+          
           const constraints = {
             video: isVideoEnabled,
             audio: isAudioEnabled
           };
 
+          // Request camera and microphone permissions
           localStream = await navigator.mediaDevices.getUserMedia(constraints);
+          console.log('✅ Media stream obtained:', localStream);
+          
           const localVideo = $('localVideo');
           const placeholder = $('videoPlaceholder');
           
           if (localVideo && localStream) {
             localVideo.srcObject = localStream;
-            if (isVideoEnabled) {
+            
+            // Force video to be visible if video is enabled
+            if (isVideoEnabled && localStream.getVideoTracks().length > 0) {
+              console.log('📹 Showing video element');
               localVideo.style.display = 'block';
               if (placeholder) placeholder.style.display = 'none';
             } else {
+              console.log('📺 Showing placeholder');
               localVideo.style.display = 'none';
               if (placeholder) placeholder.style.display = 'flex';
             }
           }
 
-          // Update button states
           updateControlStates();
           
         } catch (error) {
-          console.error('Error accessing media devices:', error);
+          console.error('❌ Error accessing media devices:', error);
           showMediaError(error);
         }
+      }
+
+      function enableCamera() {
+        const btnCam = $('btnCam');
+        if (btnCam && btnCam.getAttribute('aria-pressed') === 'false') {
+          console.log('🎥 Enabling camera via placeholder click');
+          toggle(btnCam);
+        } else if (!localStream) {
+          console.log('🎥 No stream exists, initializing media...');
+          isVideoEnabled = true;
+          initializeMedia();
+        }
+      }
+
+      function showMediaError(error) {
+        let message = 'Unable to access camera or microphone. ';
+        
+        if (error.name === 'NotAllowedError') {
+          message += 'Please allow camera and microphone permissions in your browser settings.';
+        } else if (error.name === 'NotFoundError') {
+          message += 'No camera or microphone device found.';
+        } else if (error.name === 'NotReadableError') {
+          message += 'Camera or microphone is already in use by another application.';
+        } else {
+          message += error.message || 'Unknown error occurred.';
+        }
+        
+        // Show error in the video placeholder
+        const placeholder = $('videoPlaceholder');
+        if (placeholder) {
+          placeholder.innerHTML = `
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="10" stroke="#ef4444" stroke-width="2"/>
+              <line x1="15" y1="9" x2="9" y2="15" stroke="#ef4444" stroke-width="2"/>
+              <line x1="9" y1="9" x2="15" y2="15" stroke="#ef4444" stroke-width="2"/>
+            </svg>
+            <h3 style="margin:0; color:#ef4444;">Camera Error</h3>
+            <p style="margin:0; color:#94a3b8; font-size:14px; max-width:300px;">${message}</p>
+            <button onclick="initializeMedia()" style="margin-top:12px; padding:8px 16px; background:#3b82f6; color:white; border:none; border-radius:6px; cursor:pointer;">Try Again</button>
+          `;
+        }
+        
+        showNotification('Media Error', message);
       }
 
       function updateControlStates() {
@@ -911,9 +1393,11 @@
         if (statusElement) {
           let errorMessage = 'Unable to access camera/microphone';
           if (error.name === 'NotAllowedError') {
-            errorMessage = 'Camera/microphone access denied. Please allow permissions.';
+            errorMessage = 'Camera/microphone access denied. Please allow permissions and refresh the page.';
           } else if (error.name === 'NotFoundError') {
-            errorMessage = 'No camera/microphone found.';
+            errorMessage = 'No camera/microphone found. Please connect a device.';
+          } else if (error.name === 'NotReadableError') {
+            errorMessage = 'Camera/microphone is already in use by another application.';
           }
           
           statusElement.innerHTML = `
@@ -923,49 +1407,258 @@
             </div>
           `;
         }
+        
+        showNotification('Media Error', errorMessage);
+      }
+      
+      function showNotification(title, message) {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: rgba(30, 41, 59, 0.95);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
+          padding: 16px 20px;
+          color: white;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 14px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+          z-index: 10000;
+          max-width: 320px;
+          transform: translateX(100%);
+          transition: transform 0.3s ease;
+        `;
+        
+        notification.innerHTML = `
+          <div style="font-weight: 600; margin-bottom: 4px;">${title}</div>
+          <div style="opacity: 0.8;">${message}</div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Animate in
+        setTimeout(() => {
+          notification.style.transform = 'translateX(0)';
+        }, 50);
+        setTimeout(() => {
+          notification.style.transform = 'translateX(100%)';
+          setTimeout(() => {
+            if (notification.parentNode) {
+              notification.parentNode.removeChild(notification);
+            }
+          }, 300);
+        }, 4000);
+      }
+
+      // Screen sharing functionality
+      let screenStream = null;
+      
+      async function startScreenShare(btn) {
+        try {
+          // Request screen share
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
+          });
+          
+          // Replace video stream with screen stream
+          const localVideo = $('localVideo');
+          if (localVideo) {
+            localVideo.srcObject = screenStream;
+            localVideo.style.display = 'block';
+          }
+          
+          // Hide video placeholder
+          const placeholder = $('videoPlaceholder');
+          if (placeholder) {
+            placeholder.style.display = 'none';
+          }
+          
+          // Update button state
+          btn.classList.remove('neutral');
+          btn.classList.add('active');
+          btn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
+              <path d="M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="12" cy="10" r="2" fill="currentColor"/>
+            </svg>
+          `;
+          
+          // Listen for screen share end (user clicks browser stop button)
+          screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+            stopScreenShare(btn);
+          });
+          
+          // Broadcast screen share start
+          if (currentMeetingCode) {
+            socket.emit('screen-share', { action: 'start' });
+          }
+          
+          showNotification('Screen Sharing', 'Your screen is now being shared');
+          console.log('Screen sharing started');
+          
+        } catch (error) {
+          console.error('Error starting screen share:', error);
+          btn.setAttribute('aria-pressed', 'false');
+          btn.classList.remove('active');
+          btn.classList.add('neutral');
+          
+          if (error.name === 'NotAllowedError') {
+            showNotification('Screen Share Denied', 'Screen sharing permission was denied');
+          } else {
+            showNotification('Screen Share Error', 'Unable to start screen sharing');
+          }
+        }
+      }
+      
+      async function stopScreenShare(btn) {
+        try {
+          // Stop screen stream
+          if (screenStream) {
+            screenStream.getTracks().forEach(track => track.stop());
+            screenStream = null;
+          }
+          
+          // Restore camera stream
+          const localVideo = $('localVideo');
+          const placeholder = $('videoPlaceholder');
+          
+          if (localStream && isVideoEnabled) {
+            if (localVideo) {
+              localVideo.srcObject = localStream;
+              localVideo.style.display = 'block';
+            }
+            if (placeholder) {
+              placeholder.style.display = 'none';
+            }
+          } else {
+            if (localVideo) {
+              localVideo.style.display = 'none';
+            }
+            if (placeholder) {
+              placeholder.style.display = 'flex';
+            }
+          }
+          
+          // Update button state
+          btn.setAttribute('aria-pressed', 'false');
+          btn.classList.remove('active');
+          btn.classList.add('neutral');
+          btn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
+              <path d="M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <path d="M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          `;
+          
+          // Broadcast screen share stop
+          if (currentMeetingCode) {
+            socket.emit('screen-share', { action: 'stop' });
+          }
+          
+          showNotification('Screen Sharing Stopped', 'You are no longer sharing your screen');
+          console.log('Screen sharing stopped');
+          
+        } catch (error) {
+          console.error('Error stopping screen share:', error);
+        }
       }
 
       // Initialize media when page loads
       initializeMedia();
+      
+      // Add keyboard shortcut for copying link (Ctrl+C or Cmd+C)
+      document.addEventListener('keydown', (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'c' && !event.target.matches('input, textarea')) {
+          event.preventDefault();
+          $('copy').click();
+        }
+      });
 
       $('copy').onclick = async () => {
-        const meetingUrl = `${location.origin}/?join=${encodeURIComponent(getCode())}`;
-        const inviteMessage = `🎉 Join my HangO meeting!\n\nMeeting Code: ${getCode()}\nDirect Link: ${meetingUrl}\n\nOr go to ${location.origin} and enter code: ${getCode()}`;
+        const code = getCode();
+        const meetingTitle = getUrlParam('title') || 'HangO Meeting';
+        const meetingUrl = `${location.origin}/?join=${encodeURIComponent(code)}`;
+        
+        // Create a comprehensive invite message
+        const inviteMessage = `🎉 Join my HangO meeting!
+
+📝 Meeting: ${meetingTitle}
+🔑 Meeting Code: ${code}
+🔗 Direct Link: ${meetingUrl}
+
+💡 How to join:
+• Click the direct link above, OR
+• Go to ${location.origin} and enter code: ${code}
+
+See you there! 👋`;
         
         try { 
-          await navigator.clipboard.writeText(inviteMessage);
+          await navigator.clipboard.writeText(meetingUrl);
+          
+          // Update button to show success
           $('copy').innerHTML = `
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2"/>
             </svg>
-            Copied!
+            Link Copied!
           `;
           $('copy').style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+          $('copy').style.color = 'white';
+          $('copy').style.transform = 'scale(1.05)';
           
-          showNotification('Link Copied!', 'Meeting invitation copied to clipboard');
-        } catch {
-          // Fallback if clipboard fails
-          showNotification('Share Meeting', `Meeting Code: ${getCode()}\nShare this code with others!`);
+          showNotification('Invite Link Copied!', 'Share this link with others to join the meeting');
+          
+          // Also show the full invite message in console for easy access
+          console.log('Full invite message (for manual sharing):');
+          console.log(inviteMessage);
+          
+        } catch (error) {
+          console.error('Clipboard error:', error);
+          
+          // Fallback: try to copy the full invite message
+          try {
+            await navigator.clipboard.writeText(inviteMessage);
+            showNotification('Invite Message Copied!', 'Full invitation copied to clipboard');
+          } catch {
+            // Final fallback: show the information
+            showNotification('Share Meeting', `Meeting Code: ${code}\nLink: ${meetingUrl}`);
+            
+            // Create a temporary text area to select text for manual copying
+            const textArea = document.createElement('textarea');
+            textArea.value = meetingUrl;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            setTimeout(() => {
+              document.body.removeChild(textArea);
+            }, 100);
+          }
         }
         
+        // Reset button after 3 seconds
         setTimeout(() => {
           $('copy').innerHTML = `
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke="currentColor" stroke-width="2"/>
               <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" stroke-width="2"/>
             </svg>
-            Copy Link
+            Copy Invite Link
           `;
           $('copy').style.background = '';
-        }, 2000);
-      };
-
-      $('newCode').onclick = () => {
-        const c = randomCode();
-        const url = new URL(location.href);
-        url.searchParams.set('code', c);
-        history.replaceState(null, '', url);
-        setCode(c);
+          $('copy').style.color = '';
+          $('copy').style.transform = '';
+        }, 3000);
       };
 
       const chat = $('chat');
@@ -973,23 +1666,13 @@
         const v = $('msg').value.trim();
         if (!v) return;
         
-        const line = document.createElement('div');
-        line.className = 'chat-message';
-        line.innerHTML = `<strong style="color:#3b82f6;">You:</strong> ${v}`;
-        line.style.opacity = '0';
-        line.style.transform = 'translateY(10px)';
-        line.style.transition = 'all 0.3s ease';
-        
-        chat.appendChild(line);
-        
-        // Animate message in
-        requestAnimationFrame(() => {
-          line.style.opacity = '1';
-          line.style.transform = 'translateY(0)';
-        });
-        
-        chat.scrollTop = chat.scrollHeight;
-        $('msg').value = '';
+        // Send message via Socket.IO
+        if (currentMeetingCode) {
+          socket.emit('chat-message', { message: v });
+          $('msg').value = '';
+        } else {
+          showNotification('Error', 'Not connected to meeting');
+        }
         
         // Add typing indicator simulation (fun feature)
         setTimeout(() => {
@@ -1059,6 +1742,14 @@
           audioTracks.forEach(track => track.enabled = newState);
           isAudioEnabled = newState;
           
+          // Broadcast media state change
+          if (currentMeetingCode) {
+            socket.emit('media-toggle', {
+              type: 'audio',
+              enabled: newState
+            });
+          }
+          
           // Add visual feedback for mic mute/unmute
           if (!newState) {
             btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1074,18 +1765,38 @@
               <path d="M12 19v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
             </svg>`;
           }
-        } else if (btn.id === 'btnCam' && localStream) {
-          const videoTracks = localStream.getVideoTracks();
-          videoTracks.forEach(track => track.enabled = newState);
+        } else if (btn.id === 'btnCam') {
           isVideoEnabled = newState;
+          
+          if (!localStream && newState) {
+            // If no stream exists and we're trying to enable video, initialize media
+            console.log('🎥 No stream exists, initializing media for video...');
+            initializeMedia();
+            return;
+          }
+          
+          if (localStream) {
+            const videoTracks = localStream.getVideoTracks();
+            videoTracks.forEach(track => track.enabled = newState);
+          }
+          
+          // Broadcast media state change
+          if (currentMeetingCode) {
+            socket.emit('media-toggle', {
+              type: 'video',
+              enabled: newState
+            });
+          }
           
           const localVideo = $('localVideo');
           const placeholder = $('videoPlaceholder');
           if (localVideo && placeholder) {
-            if (newState) {
+            if (newState && localStream) {
+              console.log('📹 Enabling video display');
               localVideo.style.display = 'block';
               placeholder.style.display = 'none';
             } else {
+              console.log('📺 Disabling video display');
               localVideo.style.display = 'none';
               placeholder.style.display = 'flex';
             }
@@ -1105,15 +1816,11 @@
             </svg>`;
           }
         } else if (btn.id === 'btnScreen') {
-          // Screen share functionality (placeholder)
+          // Screen share functionality
           if (newState) {
-            btn.classList.remove('neutral');
-            btn.classList.add('active');
-            console.log('Screen share started');
+            startScreenShare(btn);
           } else {
-            btn.classList.remove('active');
-            btn.classList.add('neutral');
-            console.log('Screen share stopped');
+            stopScreenShare(btn);
           }
         }
       }

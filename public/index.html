@@ -33,7 +33,7 @@
 						<a class="nav-link" href="/auth.html">Account</a>
 						  <div class="nav-split"></div>
           
-						<a href="/auth.html" class="btn btn--neon">Get started</a>
+						<a href="/auth.html" class="btn btn--neon" id="authButton">Get started</a>
 					</nav>
 				</div>
 			</div>
@@ -255,6 +255,44 @@
 				});
 			}
 		});
+
+		// Check authentication status and update navigation
+		async function updateAuthButton() {
+			try {
+				const response = await fetch('/api/user/session');
+				const data = await response.json();
+				
+				const authButton = document.getElementById('authButton');
+				if (data.success && data.authenticated && data.user) {
+					// User is logged in - show profile button with avatar
+					const avatar = data.user.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${data.user.username}&size=32`;
+					authButton.innerHTML = `<img src="${avatar}" alt="User Avatar" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; vertical-align: middle;"> ${data.user.full_name || data.user.username}`;
+					authButton.href = '/dashboard.html';
+					authButton.title = 'Go to Dashboard';
+					authButton.style.display = 'flex';
+					authButton.style.alignItems = 'center';
+					
+					// Also update account link in nav
+					const accountLink = document.querySelector('a[href="/auth.html"]');
+					if (accountLink && accountLink !== authButton) {
+						accountLink.textContent = 'Dashboard';
+						accountLink.href = '/dashboard.html';
+					}
+				} else {
+					// User is not logged in - show get started
+					authButton.textContent = 'Get started';
+					authButton.href = '/auth.html';
+					authButton.title = 'Sign up or Login';
+					authButton.style.display = '';
+					authButton.style.alignItems = '';
+				}
+			} catch (error) {
+				console.error('Error checking auth status:', error);
+			}
+		}
+
+		// Check auth status on page load
+		updateAuthButton();
 	</script>
   
 </body>

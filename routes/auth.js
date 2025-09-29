@@ -56,16 +56,23 @@ passport.use(new GitHubStrategy({
     } catch (createError) {
       console.error('❌ Failed to create GitHub user:', createError.message);
       
-      // Check error type for specific redirects
-      if (createError.message.includes('Username') && createError.message.includes('already taken')) {
-        return done(null, false, { message: 'username_taken' });
-      }
+      // Handle email conflicts more gracefully
       if (createError.message.includes('email') && createError.message.includes('already exists')) {
-        return done(null, false, { message: 'email_exists' });
+        // Try to find existing user by email and link the account
+        try {
+          const existingUser = await airtable.findUserByEmail(userData.email);
+          if (existingUser) {
+            console.log('🔗 Linking GitHub account to existing user:', existingUser.username);
+            return done(null, existingUser);
+          }
+        } catch (linkError) {
+          console.error('Failed to link account:', linkError);
+        }
       }
       
-      // Generic error
-      return done(null, false, { message: createError.message });
+      // For username conflicts, the createOAuthUser should handle it now
+      console.error('⚠️ OAuth user creation failed:', createError.message);
+      return done(createError, null);
     }
   } catch (error) {
     console.error('❌ GitHub OAuth error:', error);
@@ -124,13 +131,23 @@ passport.use(new GoogleStrategy({
     } catch (createError) {
       console.error('❌ Failed to create Google user:', createError.message);
       
-      // Check error type for specific redirects
-      if (createError.message.includes('Username') && createError.message.includes('already taken')) {
-        return done(null, false, { message: 'username_taken' });
-      }
+      // Handle email conflicts more gracefully
       if (createError.message.includes('email') && createError.message.includes('already exists')) {
-        return done(null, false, { message: 'email_exists' });
+        // Try to find existing user by email and link the account
+        try {
+          const existingUser = await airtable.findUserByEmail(userData.email);
+          if (existingUser) {
+            console.log('🔗 Linking Google account to existing user:', existingUser.username);
+            return done(null, existingUser);
+          }
+        } catch (linkError) {
+          console.error('Failed to link account:', linkError);
+        }
       }
+      
+      // For username conflicts, the createOAuthUser should handle it now
+      console.error('⚠️ OAuth user creation failed:', createError.message);
+      return done(createError, null);
       
       // Generic error
       return done(null, false, { message: createError.message });
@@ -163,21 +180,12 @@ router.get('/github/callback',
     passport.authenticate('github', (err, user, info) => {
       if (err) {
         console.error('GitHub OAuth error:', err);
-        return res.redirect('/auth.html?error=github_failed');
+        return res.redirect('/auth.html?error=authentication_failed');
       }
       
       if (!user) {
-        console.log('GitHub authentication failed:', info?.message);
-        
-        // Handle specific error types
-        if (info?.message === 'username_taken') {
-          return res.redirect('/auth.html?error=username_taken');
-        }
-        if (info?.message === 'email_exists') {
-          return res.redirect('/auth.html?error=email_exists');
-        }
-        
-        return res.redirect('/auth.html?error=github_failed');
+        console.log('GitHub authentication failed:', info?.message || 'Unknown error');
+        return res.redirect('/auth.html?error=authentication_failed');
       }
       
       // Login the user
@@ -203,21 +211,12 @@ router.get('/google/callback',
     passport.authenticate('google', (err, user, info) => {
       if (err) {
         console.error('Google OAuth error:', err);
-        return res.redirect('/auth.html?error=google_failed');
+        return res.redirect('/auth.html?error=authentication_failed');
       }
       
       if (!user) {
-        console.log('Google authentication failed:', info?.message);
-        
-        // Handle specific error types
-        if (info?.message === 'username_taken') {
-          return res.redirect('/auth.html?error=username_taken');
-        }
-        if (info?.message === 'email_exists') {
-          return res.redirect('/auth.html?error=email_exists');
-        }
-        
-        return res.redirect('/auth.html?error=google_failed');
+        console.log('Google authentication failed:', info?.message || 'Unknown error');
+        return res.redirect('/auth.html?error=authentication_failed');
       }
       
       // Login the user

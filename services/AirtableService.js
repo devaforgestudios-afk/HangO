@@ -171,18 +171,38 @@ class AirtableService {
         }
       }
 
-      // Check for username conflicts
-      const existingUserByUsername = await this.findUserByUsername(username);
+      // Check for username conflicts and generate unique username if needed
+      let finalUsername = username;
+      let existingUserByUsername = await this.findUserByUsername(username);
       
       if (existingUserByUsername) {
-        // Throw error for username conflicts instead of auto-generating
-        throw new Error(`Username '${username}' is already taken. Please try signing up with a different ${provider} account or contact support if this is your account.`);
+        // Check if it's the same user trying to re-authenticate
+        if (existingUserByUsername.provider === provider && existingUserByUsername.provider_id === provider_id) {
+          console.log(`✅ Found existing user with same ${provider} credentials:`, existingUserByUsername.username);
+          return existingUserByUsername;
+        }
+        
+        // Generate a unique username by appending provider and numbers
+        let counter = 1;
+        do {
+          finalUsername = `${username}_${provider}${counter > 1 ? counter : ''}`;
+          try {
+            existingUserByUsername = await this.findUserByUsername(finalUsername);
+            if (!existingUserByUsername) break;
+          } catch (error) {
+            // Username not found, we can use it
+            break;
+          }
+          counter++;
+        } while (counter < 100); // Safety limit
+        
+        console.log(`🔄 Username '${username}' taken, using '${finalUsername}' instead`);
       }
 
       // Create OAuth user record - only use fields that exist in Airtable
       const userFields = {
-        full_name: full_name || username,
-        username: username,
+        full_name: full_name || finalUsername,
+        username: finalUsername,
         email: email || '',
         phone: phone || '', // Will be collected during profile completion
         is_verified: is_verified || true,
@@ -288,6 +308,59 @@ class AirtableService {
     } catch (error) {
       console.error('Airtable find user by ID error:', error);
       return null;
+    }
+  }
+
+  // Update user profile
+  async updateUserProfile(userId, updateData) {
+    try {
+      const { full_name, username, email, phone, avatar_url } = updateData;
+      
+      // Prepare update fields
+      const updateFields = {};
+      
+      if (full_name) {
+        updateFields.full_name = full_name.trim();
+      }
+      
+      if (username) {
+        updateFields.username = username.trim();
+      }
+      
+      if (email) {
+        updateFields.email = email.trim().toLowerCase();
+      }
+      
+      if (phone !== undefined) {
+        updateFields.phone = phone.trim();
+      }
+      
+      if (avatar_url !== undefined) {
+        updateFields.avatar_url = avatar_url.trim();
+      }
+      
+      // Add updated timestamp
+      updateFields.updated_at = new Date().toISOString();
+
+      // Update the record
+      const updatedRecord = await this.usersTable.update(userId, updateFields);
+      
+      return {
+        id: updatedRecord.id,
+        full_name: updatedRecord.fields.full_name,
+        username: updatedRecord.fields.username,
+        email: updatedRecord.fields.email,
+        phone: updatedRecord.fields.phone || '',
+        avatar_url: updatedRecord.fields.avatar_url || '',
+        provider: updatedRecord.fields.provider,
+        is_verified: updatedRecord.fields.is_verified,
+        created_at: updatedRecord.fields.created_at,
+        updated_at: updatedRecord.fields.updated_at
+      };
+
+    } catch (error) {
+      console.error('❌ Update user profile error:', error);
+      throw new Error('Failed to update user profile');
     }
   }
 
@@ -887,6 +960,129 @@ class AirtableService {
     }
   }
 
+  // Update meeting participants in real-time
+  async updateMeetingParticipants(meetingCode, participantsData) {
+    try {
+      const meeting = await this.findMeetingByCode(meetingCode);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+
+      // Update participants in database
+      await this.meetingsTable.update([{
+        id: meeting.id,
+        fields: {
+          participants: JSON.stringify(participantsData),
+          last_activity: new Date().toISOString()
+        }
+      }]);
+
+      return true;
+    } catch (error) {
+      console.error('❌ Error updating meeting participants:', error);
+      throw error;
+    }
+  }
+
+  // Add chat message to meeting history
+  async addChatMessage(meetingCode, messageData) {
+    try {
+      const meeting = await this.findMeetingByCode(meetingCode);
+      if (!meeting) {
+        throw new Error('Meeting not found');
+      }
+
+      // Get existing chat history
+      let chatHistory = [];
+      try {
+        chatHistory = JSON.parse(meeting.chat_history || '[]');
+      } catch (e) {
+        chatHistory = [];
+      }
+
+      // Add new message
+      chatHistory.push({
+        id: messageData.id,
+        message: messageData.message,
+        sender: messageData.sender,
+        timestamp: messageData.timestamp,
+        isAnonymous: messageData.isAnonymous
+      });
+
+      // Keep only last 1000 messages
+      if (chatHistory.length > 1000) {
+        chatHistory = chatHistory.slice(-1000);
+      }
+
+      // Update in database
+      await this.meetingsTable.update([{
+        id: meeting.id,
+        fields: {
+          chat_history: JSON.stringify(chatHistory),
+          last_activity: new Date().toISOString()
+        }
+      }]);
+
+      return chatHistory;
+    } catch (error) {
+      console.error('❌ Error adding chat message:', error);
+      throw error;
+    }
+  }
+
+  // Get meeting analytics
+  async getMeetingAnalytics(meetingCode) {
+    try {
+      const meeting = await this.findMeetingByCode(meetingCode);
+      if (!meeting) {
+        return null;
+      }
+
+      const participants = JSON.parse(meeting.participants || '[]');
+      const chatHistory = JSON.parse(meeting.chat_history || '[]');
+      
+      const analytics = {
+        meetingCode: meeting.meeting_code,
+        title: meeting.title,
+        createdAt: meeting.created_at,
+        duration: meeting.ended_at ? 
+          new Date(meeting.ended_at).getTime() - new Date(meeting.created_at).getTime() : 
+          Date.now() - new Date(meeting.created_at).getTime(),
+        totalParticipants: participants.length,
+        totalMessages: chatHistory.length,
+        isActive: meeting.status === 'active',
+        lastActivity: meeting.last_activity || meeting.created_at
+      };
+
+      return analytics;
+    } catch (error) {
+      console.error('❌ Error getting meeting analytics:', error);
+      return null;
+    }
+  }
+
+  // Get all active meetings
+  async getActiveMeetings() {
+    try {
+      const records = await this.meetingsTable.select({
+        filterByFormula: `{status} = 'active'`,
+        fields: ['meeting_code', 'title', 'created_at', 'participants', 'last_activity']
+      }).all();
+
+      return records.map(record => ({
+        id: record.id,
+        meeting_code: record.fields.meeting_code,
+        title: record.fields.title,
+        created_at: record.fields.created_at,
+        participant_count: JSON.parse(record.fields.participants || '[]').length,
+        last_activity: record.fields.last_activity || record.fields.created_at
+      }));
+    } catch (error) {
+      console.error('❌ Error getting active meetings:', error);
+      return [];
+    }
+  }
+
 }
 
-module.exports = AirtableService;module.exports = AirtableService;
+module.exports = AirtableService;

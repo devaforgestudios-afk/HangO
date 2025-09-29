@@ -4,13 +4,125 @@ const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 const AirtableService = require('./services/AirtableService');
+const MeetingService = require('./services/MeetingService');
 const { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetEmail } = require('./services/EmailService');
 
 const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
-const airtable = new AirtableService();
+// Initialize Airtable with error handling
+let airtable = null;
+let airtableConnected = false;
+
+try {
+  airtable = new AirtableService();
+  airtableConnected = true;
+  console.log('✅ Airtable service initialized');
+} catch (error) {
+  console.log('⚠️  Airtable not configured, using in-memory storage');
+  console.log('💡 Add AIRTABLE_API_KEY and AIRTABLE_BASE_ID to .env file for persistent storage');
+  
+  // Create a simple in-memory fallback
+  airtable = {
+    // In-memory storage
+    meetings: new Map(),
+    users: new Map(),
+    
+    // Mock methods for meeting functionality
+    async createMeeting(meetingData) {
+      const meeting = {
+        id: Date.now().toString(),
+        ...meetingData,
+        created_at: new Date().toISOString(),
+        status: 'active',
+        participants: [],
+        chat_history: '[]',
+        last_activity: new Date().toISOString()
+      };
+      this.meetings.set(meeting.meeting_code, meeting);
+      return meeting;
+    },
+    
+    async findMeetingByCode(code) {
+      return this.meetings.get(code) || null;
+    },
+    
+    async joinMeeting(meetingCode, participantData) {
+      const meeting = this.meetings.get(meetingCode);
+      if (!meeting) throw new Error('Meeting not found');
+      
+      const participants = JSON.parse(meeting.participants || '[]');
+      participants.push(participantData);
+      meeting.participants = JSON.stringify(participants);
+      meeting.last_activity = new Date().toISOString();
+      
+      return meeting;
+    },
+    
+    async updateMeetingParticipants(meetingCode, participantsData) {
+      const meeting = this.meetings.get(meetingCode);
+      if (meeting) {
+        meeting.participants = JSON.stringify(participantsData);
+        meeting.last_activity = new Date().toISOString();
+      }
+      return true;
+    },
+    
+    async getActiveMeetings() {
+      const meetings = Array.from(this.meetings.values()).filter(m => m.status === 'active');
+      return meetings.map(meeting => ({
+        id: meeting.id,
+        meeting_code: meeting.meeting_code,
+        title: meeting.title,
+        created_at: meeting.created_at,
+        participant_count: JSON.parse(meeting.participants || '[]').length,
+        last_activity: meeting.last_activity
+      }));
+    },
+    
+    async getMeetingAnalytics(meetingCode) {
+      const meeting = this.meetings.get(meetingCode);
+      if (!meeting) return null;
+      
+      const participants = JSON.parse(meeting.participants || '[]');
+      const chatHistory = JSON.parse(meeting.chat_history || '[]');
+      
+      return {
+        meetingCode: meeting.meeting_code,
+        title: meeting.title,
+        createdAt: meeting.created_at,
+        duration: meeting.ended_at ? 
+          new Date(meeting.ended_at).getTime() - new Date(meeting.created_at).getTime() : 
+          Date.now() - new Date(meeting.created_at).getTime(),
+        totalParticipants: participants.length,
+        totalMessages: chatHistory.length,
+        isActive: meeting.status === 'active',
+        lastActivity: meeting.last_activity
+      };
+    },
+    
+    async endMeeting(meetingCode, userId) {
+      const meeting = this.meetings.get(meetingCode);
+      if (meeting) {
+        meeting.status = 'ended';
+        meeting.ended_at = new Date().toISOString();
+        this.meetings.delete(meetingCode);
+      }
+      return meeting;
+    }
+  };
+}
 
 app.use(cors());
 app.use(express.json());
@@ -24,7 +136,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: { 
     secure: process.env.NODE_ENV === 'production', // Only use secure cookies in production
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
 }));
 
@@ -32,8 +144,235 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Passport serialization for session management
+passport.serializeUser((user, done) => {
+  done(null, user.id);
+});
+
+passport.deserializeUser(async (id, done) => {
+  try {
+    if (airtableConnected) {
+      const user = await airtable.findUserById(id);
+      done(null, user);
+    } else {
+      done(null, { id: id, username: 'guest', full_name: 'Guest User' });
+    }
+  } catch (error) {
+    done(error, null);
+  }
+});
+
 // Auth routes (must be after session and passport initialization)
 app.use('/auth', require('./routes/auth'));
+
+// WebSocket meeting functionality
+function setupMeetingWebSocket(io, airtable) {
+  
+  const activeMeetings = new Map(); 
+  const userSessions = new Map();
+
+  io.on('connection', (socket) => {
+    console.log('🔌 Client connected:', socket.id);
+
+    // Join a meeting room
+    socket.on('join-meeting', async (data) => {
+      try {
+        const { meetingCode, userInfo } = data;
+        console.log('👋 User joining meeting:', meetingCode, userInfo?.name);
+
+        // Validate meeting exists in database
+        const meeting = await airtable.findMeetingByCode(meetingCode);
+        if (!meeting) {
+          socket.emit('error', { message: 'Meeting not found' });
+          return;
+        }
+
+        // Leave previous meeting if any
+        if (userSessions.has(socket.id)) {
+          const prevSession = userSessions.get(socket.id);
+          socket.leave(prevSession.meetingCode);
+          
+          // Remove from active meeting
+          if (activeMeetings.has(prevSession.meetingCode)) {
+            const meetingRoom = activeMeetings.get(prevSession.meetingCode);
+            meetingRoom.participants.delete(socket.id);
+          }
+        }
+
+        // Join the meeting room
+        socket.join(meetingCode);
+        
+        // Add to active meetings tracking
+        if (!activeMeetings.has(meetingCode)) {
+          activeMeetings.set(meetingCode, {
+            participants: new Set(),
+            meetingData: meeting
+          });
+        }
+        
+        const meetingRoom = activeMeetings.get(meetingCode);
+        meetingRoom.participants.add(socket.id);
+        
+        // Store user session
+        userSessions.set(socket.id, {
+          userId: userInfo?.userId || socket.id,
+          meetingCode,
+          userInfo: {
+            name: userInfo?.name || 'Anonymous User',
+            isAnonymous: userInfo?.isAnonymous !== false,
+            joinedAt: new Date().toISOString(),
+            socketId: socket.id
+          }
+        });
+
+        // Notify user they joined successfully
+        socket.emit('meeting-joined', {
+          meetingCode,
+          meetingTitle: meeting.title,
+          participantCount: meetingRoom.participants.size
+        });
+
+        // Broadcast to other participants that someone joined
+        socket.to(meetingCode).emit('participant-joined', {
+          participant: userSessions.get(socket.id).userInfo,
+          participantCount: meetingRoom.participants.size
+        });
+
+        // Send current participants list to the new user
+        const participantsList = Array.from(meetingRoom.participants).map(socketId => {
+          const session = userSessions.get(socketId);
+          return session ? session.userInfo : null;
+        }).filter(Boolean);
+
+        socket.emit('participants-list', { participants: participantsList });
+
+        console.log(`✅ User ${userInfo?.name} joined meeting ${meetingCode} (${meetingRoom.participants.size} total)`);
+
+      } catch (error) {
+        console.error('❌ Error joining meeting:', error);
+        socket.emit('error', { message: 'Failed to join meeting' });
+      }
+    });
+
+    // Handle chat messages
+    socket.on('chat-message', (data) => {
+      const session = userSessions.get(socket.id);
+      if (!session) return;
+
+      const chatMessage = {
+        id: Date.now().toString(),
+        message: data.message,
+        sender: session.userInfo.name,
+        timestamp: new Date().toISOString(),
+        isAnonymous: session.userInfo.isAnonymous
+      };
+
+      // Broadcast to all participants in the meeting
+      io.to(session.meetingCode).emit('chat-message', chatMessage);
+      console.log(`💬 Chat in ${session.meetingCode}: ${session.userInfo.name}: ${data.message}`);
+    });
+
+    // Handle media state changes (mic/camera/screen share)
+    socket.on('media-state', (data) => {
+      const session = userSessions.get(socket.id);
+      if (!session) return;
+
+      // Broadcast media state to other participants
+      socket.to(session.meetingCode).emit('participant-media-state', {
+        participantId: socket.id,
+        participantName: session.userInfo.name,
+        mediaState: data
+      });
+
+      console.log(`🎥 Media state update from ${session.userInfo.name}: mic=${data.audio}, cam=${data.video}, screen=${data.screen}`);
+    });
+
+    // Handle WebRTC signaling
+    socket.on('webrtc-offer', (data) => {
+      socket.to(data.target).emit('webrtc-offer', {
+        offer: data.offer,
+        sender: socket.id
+      });
+    });
+
+    socket.on('webrtc-answer', (data) => {
+      socket.to(data.target).emit('webrtc-answer', {
+        answer: data.answer,
+        sender: socket.id
+      });
+    });
+
+    socket.on('webrtc-ice-candidate', (data) => {
+      socket.to(data.target).emit('webrtc-ice-candidate', {
+        candidate: data.candidate,
+        sender: socket.id
+      });
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', () => {
+      console.log('🔌 Client disconnected:', socket.id);
+      
+      const session = userSessions.get(socket.id);
+      if (session) {
+        // Remove from meeting room
+        if (activeMeetings.has(session.meetingCode)) {
+          const meetingRoom = activeMeetings.get(session.meetingCode);
+          meetingRoom.participants.delete(socket.id);
+          
+          // Notify other participants
+          socket.to(session.meetingCode).emit('participant-left', {
+            participant: session.userInfo,
+            participantCount: meetingRoom.participants.size
+          });
+
+          // Clean up empty meeting rooms
+          if (meetingRoom.participants.size === 0) {
+            activeMeetings.delete(session.meetingCode);
+            console.log(`🧹 Cleaned up empty meeting room: ${session.meetingCode}`);
+          }
+        }
+
+        // Remove user session
+        userSessions.delete(socket.id);
+        console.log(`👋 User ${session.userInfo.name} left meeting ${session.meetingCode}`);
+      }
+    });
+
+    // Manually leave meeting
+    socket.on('leave-meeting', () => {
+      const session = userSessions.get(socket.id);
+      if (session) {
+        socket.leave(session.meetingCode);
+        
+        // Remove from active meeting
+        if (activeMeetings.has(session.meetingCode)) {
+          const meetingRoom = activeMeetings.get(session.meetingCode);
+          meetingRoom.participants.delete(socket.id);
+          
+          // Notify others
+          socket.to(session.meetingCode).emit('participant-left', {
+            participant: session.userInfo,
+            participantCount: meetingRoom.participants.size
+          });
+        }
+        
+        userSessions.delete(socket.id);
+        socket.emit('meeting-left');
+      }
+    });
+  });
+
+  // Periodic cleanup of stale meetings
+  setInterval(() => {
+    const now = Date.now();
+    for (const [meetingCode, meetingRoom] of activeMeetings.entries()) {
+      if (meetingRoom.participants.size === 0) {
+        activeMeetings.delete(meetingCode);
+      }
+    }
+  }, 5 * 60 * 1000); // Clean up every 5 minutes
+}
 
 app.post('/api/user/register', async (req, res) => {
   console.log('📝 Registration request received:', req.body);
@@ -81,10 +420,22 @@ app.post('/api/user/login', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Username and password are required' });
     }
     
-    const user = await airtable.findUserByUsername(username);
+    // Try to find user by username or email
+    let user = await airtable.findUserByUsername(username);
+    if (!user) {
+      try {
+        user = await airtable.findUserByEmail(username);
+      } catch (error) {
+        // User not found by email either
+      }
+    }
     
     if (!user) {
-      return res.status(401).json({ success: false, error: 'Invalid username or password' });
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Account not found. Please create an account first.',
+        redirectToSignup: true 
+      });
     }
     
     const isValidPassword = await airtable.verifyPassword(password, user.password_hash);
@@ -95,18 +446,167 @@ app.post('/api/user/login', async (req, res) => {
     
     // Check if user is verified
     if (!user.is_verified) {
-      return res.status(403).json({ success: false, error: 'Please verify your email before logging in. Check your inbox for a verification link.' });
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Please verify your email before logging in. Check your inbox for a verification link.' 
+      });
     }
     
-    const { password_hash, ...userWithoutPassword } = user;
-    res.json({
-      success: true,
-      user: userWithoutPassword
+    // Log the user in using Passport session
+    req.login(user, (err) => {
+      if (err) {
+        console.error('Session login error:', err);
+        return res.status(500).json({ success: false, error: 'Login failed. Please try again.' });
+      }
+      
+      const { password_hash, ...userWithoutPassword } = user;
+      res.json({
+        success: true,
+        message: 'Login successful',
+        user: userWithoutPassword
+      });
     });
     
   } catch (error) {
     console.error('Login error:', error.message);
     res.status(500).json({ success: false, error: 'Login failed. Please try again.' });
+  }
+});
+
+// Get current user session
+app.get('/api/user/session', (req, res) => {
+  if (req.isAuthenticated()) {
+    const { password_hash, ...userWithoutPassword } = req.user;
+    res.json({
+      success: true,
+      authenticated: true,
+      user: userWithoutPassword
+    });
+  } else {
+    res.json({
+      success: true,
+      authenticated: false,
+      user: null
+    });
+  }
+});
+
+// Logout endpoint
+app.post('/api/user/logout', (req, res) => {
+  req.logout((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({ success: false, error: 'Logout failed' });
+    }
+    res.json({ success: true, message: 'Logged out successfully' });
+  });
+});
+
+// Update user profile endpoint
+app.post('/api/user/update-profile', async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    const { full_name, username, email, phone, avatar_url } = req.body;
+    const userId = req.user.id;
+
+    // Validation
+    if (!full_name || !full_name.trim()) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Username validation
+    if (username.length < 3 || username.length > 20) {
+      return res.status(400).json({ error: 'Username must be between 3-20 characters' });
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return res.status(400).json({ error: 'Username can only contain letters, numbers, and underscores' });
+    }
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    }
+
+    // Phone validation (if provided)
+    if (phone && phone.trim()) {
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$|^[\+]?[1-9][\d\s\(\)\-]{7,}$/;
+      if (!phoneRegex.test(phone.replace(/[\s\(\)\-]/g, ''))) {
+        return res.status(400).json({ error: 'Please enter a valid phone number' });
+      }
+    }
+
+    console.log(`📝 Updating profile for user: ${req.user.username}`);
+
+    // Check if username is already taken by another user
+    if (username !== req.user.username) {
+      try {
+        const existingUser = await airtable.findUserByUsername(username);
+        if (existingUser && existingUser.id !== userId) {
+          return res.status(409).json({ error: 'This username is already taken' });
+        }
+      } catch (error) {
+        // Username not found, which is good - we can use it
+      }
+    }
+
+    // Check if email is already taken by another user
+    if (email !== req.user.email) {
+      try {
+        const existingUser = await airtable.findUserByEmail(email);
+        if (existingUser && existingUser.id !== userId) {
+          return res.status(409).json({ error: 'This email is already registered to another account' });
+        }
+      } catch (error) {
+        // Email not found, which is good - we can use it
+      }
+    }
+
+    // Update user profile
+    const updatedUser = await airtable.updateUserProfile(userId, {
+      full_name: full_name.trim(),
+      username: username.trim(),
+      email: email.trim(),
+      phone: phone ? phone.trim() : '',
+      avatar_url: avatar_url ? avatar_url.trim() : ''
+    });
+
+    console.log(`✅ Profile updated successfully for: ${req.user.username}`);
+
+    // Update session user data
+    req.user.full_name = updatedUser.full_name;
+    req.user.username = updatedUser.username;
+    req.user.email = updatedUser.email;
+    req.user.phone = updatedUser.phone;
+    req.user.avatar_url = updatedUser.avatar_url;
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        username: updatedUser.username,
+        full_name: updatedUser.full_name,
+        email: updatedUser.email,
+        phone: updatedUser.phone || '',
+        avatar_url: updatedUser.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${updatedUser.username}&size=150`
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Profile update error:', error.message);
+    res.status(500).json({ error: 'Failed to update profile. Please try again.' });
   }
 });
 
@@ -161,6 +661,19 @@ app.get('/api/user/verify', async (req, res) => {
     console.error('Verification error:', error);
     res.status(500).send('Verification failed. Please try again.');
   }
+});
+
+// Check user authentication status
+app.get('/api/user/status', (req, res) => {
+  res.json({
+    isAuthenticated: req.isAuthenticated(),
+    user: req.isAuthenticated() ? {
+      username: req.user.username,
+      full_name: req.user.full_name,
+      email: req.user.email,
+      avatar: req.user.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${req.user.username}&size=150`
+    } : null
+  });
 });
 
 // Dashboard API endpoint for authenticated users
@@ -334,6 +847,17 @@ app.post('/api/meeting/create', async (req, res) => {
     const meeting = await airtable.createMeeting(meetingData);
     console.log('✅ Meeting created:', meeting.meeting_code);
     
+    // Broadcast to admin dashboard
+    if (meetingService) {
+      meetingService.broadcastAdminEvent('meeting-created', {
+        meetingCode: meeting.meeting_code,
+        title: meeting.title,
+        createdBy: meeting.created_by_name,
+        isAnonymous: meeting.is_anonymous,
+        createdAt: meeting.created_at
+      });
+    }
+    
     res.json({
       success: true,
       meeting: meeting,
@@ -449,6 +973,102 @@ app.post('/api/meeting/end', async (req, res) => {
   }
 });
 
+// Get meeting analytics
+app.get('/api/meeting/:code/analytics', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const analytics = await airtable.getMeetingAnalytics(code);
+    
+    if (!analytics) {
+      return res.status(404).json({ success: false, error: 'Meeting not found' });
+    }
+    
+    res.json({
+      success: true,
+      analytics: analytics
+    });
+  } catch (error) {
+    console.error('❌ Get meeting analytics error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get meeting analytics'
+    });
+  }
+});
+
+// Get all active meetings
+app.get('/api/meetings/active', async (req, res) => {
+  try {
+    let meetings = [];
+    
+    if (meetingService && meetingService.activeMeetings) {
+      // Get real-time data from MeetingService if available
+      meetings = Array.from(meetingService.activeMeetings.values()).map(meeting => ({
+        meeting_code: meeting.meetingCode || meeting.meetingData?.meeting_code,
+        title: meeting.title || meeting.meetingData?.title || 'Untitled Meeting',
+        participant_count: meeting.participants?.size || 0,
+        created_at: meeting.createdAt || meeting.meetingData?.created_at,
+        last_activity: meeting.lastActivity || meeting.createdAt || meeting.meetingData?.created_at,
+        status: 'active',
+        created_by_name: meeting.meetingData?.created_by_name || 'Unknown',
+        chat_messages: meeting.chatHistory?.length || 0
+      }));
+    } else {
+      // Fallback to Airtable data
+      const airtableMeetings = await airtable.getActiveMeetings();
+      meetings = airtableMeetings.map(meeting => ({
+        ...meeting,
+        participant_count: 0,
+        last_activity: meeting.created_at,
+        chat_messages: 0
+      }));
+    }
+    
+    res.json({
+      success: true,
+      meetings: meetings,
+      count: meetings.length
+    });
+  } catch (error) {
+    console.error('❌ Get active meetings error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get active meetings'
+    });
+  }
+});
+
+// Meeting health check endpoint
+app.get('/api/meeting/:code/health', async (req, res) => {
+  try {
+    const { code } = req.params;
+    const meeting = await airtable.findMeetingByCode(code);
+    
+    if (!meeting) {
+      return res.status(404).json({ success: false, error: 'Meeting not found' });
+    }
+    
+    const health = {
+      status: meeting.status,
+      isActive: meeting.status === 'active',
+      participantCount: JSON.parse(meeting.participants || '[]').length,
+      lastActivity: meeting.last_activity || meeting.created_at,
+      uptime: Date.now() - new Date(meeting.created_at).getTime()
+    };
+    
+    res.json({
+      success: true,
+      health: health
+    });
+  } catch (error) {
+    console.error('❌ Meeting health check error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check meeting health'
+    });
+  }
+});
+
 // Leave meeting (remove participant)
 app.post('/api/meeting/leave', async (req, res) => {
   console.log('👋 Meeting leave request:', req.body);
@@ -528,30 +1148,46 @@ app.get('/reset-password', (req, res) => {
 
 const startServer = async () => {
   try {
-    console.log('🚀 Starting HangO server with Airtable...');
+    console.log('🚀 Starting HangO server...');
     
-    const airtableConnected = await airtable.testConnection();
     let passwordResetReady = false;
     
-    if (!airtableConnected) {
-      console.log('❌ Airtable not connected. Please check your API key and Base ID.');
-    } else {
-      console.log('✅ Airtable connection successful');
-      
-      // Check if password reset fields are configured
-      passwordResetReady = await airtable.checkPasswordResetFields();
-      if (!passwordResetReady) {
-        console.log('⚠️  Password reset feature requires additional setup (see instructions above)');
-      } else {
-        console.log('✅ Password reset feature is ready');
+    if (airtableConnected) {
+      console.log('🔄 Testing Airtable connection...');
+      try {
+        const testResult = await airtable.testConnection();
+        if (!testResult) {
+          console.log('❌ Airtable connection failed');
+          airtableConnected = false;
+        } else {
+          console.log('✅ Airtable connection successful');
+          
+          // Check if password reset fields are configured
+          if (airtable.checkPasswordResetFields) {
+            passwordResetReady = await airtable.checkPasswordResetFields();
+            if (!passwordResetReady) {
+              console.log('⚠️  Password reset feature requires additional setup');
+            } else {
+              console.log('✅ Password reset feature is ready');
+            }
+          }
+        }
+      } catch (error) {
+        console.log('❌ Airtable connection error:', error.message);
+        airtableConnected = false;
       }
     }
     
-    app.listen(PORT, () => {
+    // Initialize real-time meeting service
+    const meetingService = new MeetingService(io, airtable);
+    console.log('✅ Real-time meeting service initialized');
+    
+    server.listen(PORT, () => {
       console.log('');
       console.log('🌐 Server running at http://localhost:' + PORT);
       console.log('💾 Database: ' + (airtableConnected ? 'Airtable Connected ✅' : 'Airtable Disconnected ❌'));
       console.log('🔐 Password Reset: ' + (passwordResetReady ? 'Ready ✅' : 'Setup Required ⚠️'));
+      console.log('🔌 WebSocket: Socket.IO Ready ✅');
       console.log('✨ HangO is ready for meetings!');
       console.log('');
       

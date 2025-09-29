@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HangO Admin - Meeting Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .admin-dashboard {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+    }
+    
+    .dashboard-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+    
+    .stat-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #22c55e;
+      margin-bottom: 5px;
+    }
+    
+    .stat-label {
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+    
+    .meetings-table {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      overflow-x: auto;
+    }
+    
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .table th,
+    .table td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .table th {
+      font-weight: 600;
+      opacity: 0.8;
+    }
+    
+    .status-active {
+      color: #22c55e;
+      font-weight: 600;
+    }
+    
+    .status-ended {
+      color: #ef4444;
+      font-weight: 600;
+    }
+    
+    .refresh-btn {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+    
+    .meeting-code {
+      font-family: monospace;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-dashboard">
+    <div class="dashboard-header">
+      <h1>🎥 HangO Meeting Dashboard</h1>
+      <p>Real-time meeting monitoring and analytics</p>
+    </div>
+    
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="activeMeetings">0</div>
+        <div class="stat-label">Active Meetings</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalParticipants">0</div>
+        <div class="stat-label">Total Participants</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="totalMessages">0</div>
+        <div class="stat-label">Chat Messages</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="avgDuration">0m</div>
+        <div class="stat-label">Avg. Duration</div>
+      </div>
+    </div>
+    
+    <div class="meetings-table">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Active Meetings</h2>
+        <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+      </div>
+      
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Meeting Code</th>
+            <th>Title</th>
+            <th>Participants</th>
+            <th>Duration</th>
+            <th>Last Activity</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="meetingsTableBody">
+          <tr>
+            <td colspan="6" style="text-align: center; opacity: 0.6; padding: 40px;">
+              Loading meetings...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // Initialize Socket.IO connection for real-time updates
+    const socket = io();
+    
+    // Listen for real-time updates
+    socket.on('admin-stats-update', (data) => {
+      updateStats(data.meetings || []);
+      updateMeetingsTable(data.meetings || []);
+    });
+    
+    socket.on('meeting-created', (meetingData) => {
+      console.log('New meeting created:', meetingData);
+      fetchStats(); // Refresh the data
+    });
+    
+    socket.on('participant-joined', (data) => {
+      console.log('Participant joined:', data);
+      fetchStats(); // Refresh the data
+    });
+    
+    socket.on('participant-left', (data) => {
+      console.log('Participant left:', data);
+      fetchStats(); // Refresh the data
+    });
+    
+    // Join admin room for updates
+    socket.emit('join-admin');
+    
+    async function fetchStats() {
+      try {
+        const response = await fetch('/api/meetings/active');
+        const data = await response.json();
+        
+        if (data.success) {
+          updateStats(data.meetings);
+          updateMeetingsTable(data.meetings);
+        } else {
+          console.error('Failed to fetch meeting stats:', data.error);
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    }
+    
+    function updateStats(meetings) {
+      const activeMeetings = meetings.length;
+      let totalParticipants = 0;
+      let totalDuration = 0;
+      
+      meetings.forEach(meeting => {
+        totalParticipants += meeting.participant_count || 0;
+        totalDuration += Date.now() - new Date(meeting.created_at).getTime();
+      });
+      
+      const avgDuration = activeMeetings > 0 ? totalDuration / activeMeetings : 0;
+      
+      document.getElementById('activeMeetings').textContent = activeMeetings;
+      document.getElementById('totalParticipants').textContent = totalParticipants;
+      document.getElementById('totalMessages').textContent = '---'; // Will add later
+      document.getElementById('avgDuration').textContent = formatDuration(avgDuration);
+    }
+    
+    function updateMeetingsTable(meetings) {
+      const tbody = document.getElementById('meetingsTableBody');
+      
+      if (meetings.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align: center; opacity: 0.6; padding: 40px;">
+              No active meetings
+            </td>
+          </tr>
+        `;
+        return;
+      }
+      
+      tbody.innerHTML = meetings.map(meeting => {
+        const duration = Date.now() - new Date(meeting.created_at).getTime();
+        const lastActivity = meeting.last_activity || meeting.created_at;
+        const timeAgo = getTimeAgo(lastActivity);
+        
+        return `
+          <tr>
+            <td>
+              <span class="meeting-code">${meeting.meeting_code}</span>
+            </td>
+            <td>${meeting.title}</td>
+            <td>${meeting.participant_count}</td>
+            <td>${formatDuration(duration)}</td>
+            <td>${timeAgo}</td>
+            <td>
+              <span class="status-active">Active</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+    
+    function formatDuration(ms) {
+      const minutes = Math.floor(ms / (1000 * 60));
+      const hours = Math.floor(minutes / 60);
+      
+      if (hours > 0) {
+        return `${hours}h ${minutes % 60}m`;
+      }
+      return `${minutes}m`;
+    }
+    
+    function getTimeAgo(timestamp) {
+      const now = new Date();
+      const time = new Date(timestamp);
+      const diff = now - time;
+      
+      const minutes = Math.floor(diff / (1000 * 60));
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      
+      if (days > 0) return `${days}d ago`;
+      if (hours > 0) return `${hours}h ago`;
+      if (minutes > 0) return `${minutes}m ago`;
+      return 'Just now';
+    }
+    
+    function refreshData() {
+      fetchStats();
+    }
+    
+    // Auto-refresh every 10 seconds
+    setInterval(fetchStats, 10000);
+    
+    // Initial load
+    fetchStats();
+  </script>
+</body>
+</html>
