@@ -1,3 +1,8 @@
 .env
 package-lock.json
+<<<<<<< Updated upstream
 package.json
+=======
+package.json
+
+>>>>>>> Stashed changes

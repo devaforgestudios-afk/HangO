@@ -6,6 +6,7 @@
   <title>HangO — Meeting</title>
   <link rel="stylesheet" href="/styles.css" />
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/webrtc-client.js"></script>
   <style>
     /* Meeting-specific styles for immersive experience */
     body {
@@ -465,6 +466,9 @@
             <span>Connecting...</span>
           </div>
         </div>
+        
+        <!-- Remote Videos Container -->
+        <div id="remoteVideos" style="position:absolute; bottom:20px; right:20px; display:flex; flex-wrap:wrap; max-width:400px; gap:10px;"></div>
       </div>
 
       <!-- Sidebar -->
@@ -1282,6 +1286,8 @@
       }, 1500);
 
       let localStream = null;
+      let webrtcClient = null;
+      
       // Enable video and audio by default unless explicitly disabled
       let isVideoEnabled = meetingSettings.enableVideo !== false;
       let isAudioEnabled = meetingSettings.enableAudio !== false;
@@ -1300,25 +1306,25 @@
             audio: isAudioEnabled
           };
 
-          // Request camera and microphone permissions
-          localStream = await navigator.mediaDevices.getUserMedia(constraints);
-          console.log('✅ Media stream obtained:', localStream);
+          // Initialize WebRTC client if not already done
+          if (!webrtcClient) {
+            const localVideo = $('localVideo');
+            const remoteVideos = $('remoteVideos');
+            webrtcClient = new HangOWebRTC(socket, localVideo, remoteVideos);
+          }
           
-          const localVideo = $('localVideo');
+          // Initialize media through WebRTC client
+          localStream = await webrtcClient.initializeMedia(constraints);
+          console.log('✅ Media stream obtained via WebRTC client');
+          
           const placeholder = $('videoPlaceholder');
-          
-          if (localVideo && localStream) {
-            localVideo.srcObject = localStream;
-            
-            // Force video to be visible if video is enabled
+          if (placeholder) {
             if (isVideoEnabled && localStream.getVideoTracks().length > 0) {
-              console.log('📹 Showing video element');
-              localVideo.style.display = 'block';
-              if (placeholder) placeholder.style.display = 'none';
+              placeholder.style.display = 'none';
+              console.log('📹 Local video enabled and displayed');
             } else {
-              console.log('📺 Showing placeholder');
-              localVideo.style.display = 'none';
-              if (placeholder) placeholder.style.display = 'flex';
+              placeholder.style.display = 'flex';
+              console.log('📺 Video placeholder shown');
             }
           }
 
@@ -1458,52 +1464,39 @@
       
       async function startScreenShare(btn) {
         try {
-          // Request screen share
-          screenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true
-          });
+          console.log('🖥️ Starting screen share via WebRTC');
           
-          // Replace video stream with screen stream
-          const localVideo = $('localVideo');
-          if (localVideo) {
-            localVideo.srcObject = screenStream;
-            localVideo.style.display = 'block';
+          let success = false;
+          if (webrtcClient) {
+            success = await webrtcClient.startScreenShare();
           }
           
-          // Hide video placeholder
-          const placeholder = $('videoPlaceholder');
-          if (placeholder) {
-            placeholder.style.display = 'none';
+          if (success) {
+            // Update button state
+            btn.classList.remove('neutral');
+            btn.classList.add('active');
+            btn.innerHTML = `
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
+                <path d="M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="12" cy="10" r="2" fill="currentColor"/>
+              </svg>
+            `;
+            
+            // Broadcast screen share start
+            if (currentMeetingCode) {
+              socket.emit('screen-share', { action: 'start' });
+            }
+            
+            showNotification('Screen Sharing', 'Your screen is now being shared');
+            console.log('✅ Screen sharing started successfully');
+          } else {
+            throw new Error('Screen sharing failed');
           }
-          
-          // Update button state
-          btn.classList.remove('neutral');
-          btn.classList.add('active');
-          btn.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" stroke-width="2"/>
-              <path d="M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <path d="M12 17v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="12" cy="10" r="2" fill="currentColor"/>
-            </svg>
-          `;
-          
-          // Listen for screen share end (user clicks browser stop button)
-          screenStream.getVideoTracks()[0].addEventListener('ended', () => {
-            stopScreenShare(btn);
-          });
-          
-          // Broadcast screen share start
-          if (currentMeetingCode) {
-            socket.emit('screen-share', { action: 'start' });
-          }
-          
-          showNotification('Screen Sharing', 'Your screen is now being shared');
-          console.log('Screen sharing started');
           
         } catch (error) {
-          console.error('Error starting screen share:', error);
+          console.error('❌ Error starting screen share:', error);
           btn.setAttribute('aria-pressed', 'false');
           btn.classList.remove('active');
           btn.classList.add('neutral');
@@ -1511,42 +1504,20 @@
           if (error.name === 'NotAllowedError') {
             showNotification('Screen Share Denied', 'Screen sharing permission was denied');
           } else {
-            showNotification('Screen Share Error', 'Unable to start screen sharing');
+            showNotification('Screen Share Error', 'Unable to start screen sharing: ' + error.message);
           }
         }
       }
       
       async function stopScreenShare(btn) {
         try {
-          // Stop screen stream
-          if (screenStream) {
-            screenStream.getTracks().forEach(track => track.stop());
-            screenStream = null;
-          }
+          console.log('🖥️ Stopping screen share via WebRTC');
           
-          // Restore camera stream
-          const localVideo = $('localVideo');
-          const placeholder = $('videoPlaceholder');
-          
-          if (localStream && isVideoEnabled) {
-            if (localVideo) {
-              localVideo.srcObject = localStream;
-              localVideo.style.display = 'block';
-            }
-            if (placeholder) {
-              placeholder.style.display = 'none';
-            }
-          } else {
-            if (localVideo) {
-              localVideo.style.display = 'none';
-            }
-            if (placeholder) {
-              placeholder.style.display = 'flex';
-            }
+          if (webrtcClient) {
+            await webrtcClient.stopScreenShare();
           }
           
           // Update button state
-          btn.setAttribute('aria-pressed', 'false');
           btn.classList.remove('active');
           btn.classList.add('neutral');
           btn.innerHTML = `
@@ -1563,12 +1534,36 @@
           }
           
           showNotification('Screen Sharing Stopped', 'You are no longer sharing your screen');
-          console.log('Screen sharing stopped');
+          console.log('✅ Screen sharing stopped successfully');
           
         } catch (error) {
-          console.error('Error stopping screen share:', error);
+          console.error('❌ Error stopping screen share:', error);
+          showNotification('Error', 'Failed to stop screen sharing properly');
         }
       }
+
+      // Cleanup function for leaving meeting
+      function leaveMeeting() {
+        console.log('👋 Leaving meeting - cleaning up WebRTC connections');
+        
+        if (webrtcClient) {
+          webrtcClient.cleanup();
+        }
+        
+        if (socket) {
+          socket.emit('leave-meeting');
+        }
+        
+        // Redirect to dashboard
+        window.location.href = '/dashboard.html';
+      }
+      
+      // Add event listener for page unload
+      window.addEventListener('beforeunload', () => {
+        if (webrtcClient) {
+          webrtcClient.cleanup();
+        }
+      });
 
       // Initialize media when page loads
       initializeMedia();
@@ -1737,16 +1732,21 @@ See you there! 👋`;
         }
         
         // Handle actual media stream controls
-        if (btn.id === 'btnMic' && localStream) {
-          const audioTracks = localStream.getAudioTracks();
-          audioTracks.forEach(track => track.enabled = newState);
-          isAudioEnabled = newState;
+        if (btn.id === 'btnMic') {
+          // Use WebRTC client for audio toggle
+          if (webrtcClient) {
+            isAudioEnabled = webrtcClient.toggleAudio();
+          } else if (localStream) {
+            const audioTracks = localStream.getAudioTracks();
+            audioTracks.forEach(track => track.enabled = newState);
+            isAudioEnabled = newState;
+          }
           
           // Broadcast media state change
           if (currentMeetingCode) {
             socket.emit('media-toggle', {
               type: 'audio',
-              enabled: newState
+              enabled: isAudioEnabled
             });
           }
           
@@ -1766,8 +1766,6 @@ See you there! 👋`;
             </svg>`;
           }
         } else if (btn.id === 'btnCam') {
-          isVideoEnabled = newState;
-          
           if (!localStream && newState) {
             // If no stream exists and we're trying to enable video, initialize media
             console.log('🎥 No stream exists, initializing media for video...');
@@ -1775,31 +1773,33 @@ See you there! 👋`;
             return;
           }
           
-          if (localStream) {
+          // Use WebRTC client for video toggle
+          if (webrtcClient) {
+            isVideoEnabled = webrtcClient.toggleVideo();
+          } else if (localStream) {
             const videoTracks = localStream.getVideoTracks();
             videoTracks.forEach(track => track.enabled = newState);
+            isVideoEnabled = newState;
+            
+            const localVideo = $('localVideo');
+            const placeholder = $('videoPlaceholder');
+            if (localVideo && placeholder) {
+              if (newState) {
+                localVideo.style.display = 'block';
+                placeholder.style.display = 'none';
+              } else {
+                localVideo.style.display = 'none';
+                placeholder.style.display = 'flex';
+              }
+            }
           }
           
           // Broadcast media state change
           if (currentMeetingCode) {
             socket.emit('media-toggle', {
               type: 'video',
-              enabled: newState
+              enabled: isVideoEnabled
             });
-          }
-          
-          const localVideo = $('localVideo');
-          const placeholder = $('videoPlaceholder');
-          if (localVideo && placeholder) {
-            if (newState && localStream) {
-              console.log('📹 Enabling video display');
-              localVideo.style.display = 'block';
-              placeholder.style.display = 'none';
-            } else {
-              console.log('📺 Disabling video display');
-              localVideo.style.display = 'none';
-              placeholder.style.display = 'flex';
-            }
           }
           
           // Update camera icon

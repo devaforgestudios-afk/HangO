@@ -329,8 +329,23 @@
       <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=Felix&size=150" alt="User Avatar" class="dashboard-avatar" id="userAvatar"/>
       <div class="dashboard-username" id="userName">User</div>
       <div class="dashboard-email" id="userEmail">user@email.com</div>
+      
+      <!-- Calendar Connection Status -->
+      <div id="calendarStatus" style="
+        width: 100%; padding: 12px; border-radius: 12px; margin-bottom: 16px;
+        background: rgba(107, 114, 128, 0.2); border: 1px solid rgba(107, 114, 128, 0.3);
+        display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9ca3af;
+      ">
+        <div id="calendarIcon">📅</div>
+        <div>
+          <div style="font-weight: 600;" id="calendarStatusText">Checking calendar...</div>
+          <div style="font-size: 11px; opacity: 0.8;" id="calendarStatusDetail">Please wait</div>
+        </div>
+      </div>
+      
       <div class="dashboard-actions">
         <button id="dashboardCreateMeeting" class="primary">🎥 Create Meeting</button>
+        <button id="dashboardScheduleMeeting" style="background: linear-gradient(135deg, #22c55e, #16a34a); box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);">📅 Schedule Meeting</button>
         <button id="dashboardJoinMeeting">📞 Join Meeting</button>
         <button id="editProfile">⚙️ Edit Profile</button>
         <button id="logoutBtn" onclick="logout()" style="background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);">🚪 Logout</button>
@@ -389,7 +404,10 @@
         
         // Update recent meetings
         updateRecentMeetings(data.recentMeetings || []);
+        
+        // Load both dashboard events and Google Calendar events
         updateUpcomingEvents(data.upcomingEvents || []);
+        loadCalendarEvents(); // Load Google Calendar events too
         
       } catch (err) {
         console.error('Dashboard load error:', err);
@@ -437,29 +455,75 @@
       `).join('');
     }
 
-    // Update upcoming events
+    // Update upcoming events (now includes Google Calendar events)
     function updateUpcomingEvents(events) {
       const container = document.getElementById('upcomingEvents');
       if (!events.length) {
-        container.innerHTML = '<div style="text-align: center; color: #64748b; padding: 20px;">🗓️ No upcoming events scheduled.</div>';
+        container.innerHTML = `
+          <div style="text-align: center; color: #64748b; padding: 20px;">
+            � No upcoming events scheduled.
+            <br><small>Use "Schedule Meeting" to add events to your calendar.</small>
+          </div>
+        `;
         return;
       }
       
       container.innerHTML = events.map(event => `
-        <div class="meeting-item">
+        <div class="meeting-item" style="border-left: 3px solid #22c55e;">
           <div class="meeting-info">
-            <h4>${event.title}</h4>
-            <p>${event.description}</p>
+            <h4>${event.title || 'HangO Meeting'}</h4>
+            <p style="color: #94a3b8; margin: 4px 0;">
+              ${event.description ? event.description.substring(0, 80) + '...' : 'Scheduled meeting'}
+            </p>
+            ${event.htmlLink ? `<a href="${event.htmlLink}" target="_blank" style="color: #22d3ee; text-decoration: none; font-size: 12px;">View in Calendar →</a>` : ''}
           </div>
-          <div class="meeting-time">${formatDate(event.date)}</div>
+          <div class="meeting-time">${formatCalendarDate(event.startTime)}</div>
         </div>
       `).join('');
+    }
+
+    // Load Google Calendar events
+    async function loadCalendarEvents() {
+      try {
+        const response = await fetch('/api/calendar/upcoming-meetings');
+        if (response.ok) {
+          const data = await response.json();
+          updateUpcomingEvents(data.meetings || []);
+        }
+      } catch (error) {
+        console.log('Calendar events not available:', error);
+      }
     }
 
     // Format date for display
     function formatDate(dateStr) {
       const date = new Date(dateStr);
       return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
+
+    // Format calendar date for display
+    function formatCalendarDate(dateStr) {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const isToday = date.toDateString() === now.toDateString();
+      const isTomorrow = date.toDateString() === new Date(now.getTime() + 24 * 60 * 60 * 1000).toDateString();
+      
+      let dateLabel = '';
+      if (isToday) {
+        dateLabel = 'Today';
+      } else if (isTomorrow) {
+        dateLabel = 'Tomorrow';
+      } else {
+        dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+      
+      const timeLabel = date.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+      
+      return `${dateLabel} at ${timeLabel}`;
     }
 
     // Logout function
@@ -765,6 +829,425 @@
         if (e.target === modal) modal.remove();
       };
     };
+
+    // Schedule Meeting Button
+    document.getElementById('dashboardScheduleMeeting').onclick = async () => {
+      try {
+        // Check Google Calendar status first
+        const statusResponse = await fetch('/api/calendar/status');
+        const calendarStatus = await statusResponse.json();
+        
+        if (!calendarStatus.configured) {
+          toast('Google Calendar API not configured. ' + (calendarStatus.message || 'Please contact administrator.'));
+          return;
+        }
+        
+        if (!calendarStatus.connected) {
+          // Need to connect to Google Calendar
+          showCalendarConnectionModal(calendarStatus.message);
+          return;
+        }
+        
+        // Show schedule meeting modal
+        showScheduleMeetingModal();
+        
+      } catch (error) {
+        console.error('Schedule meeting error:', error);
+        toast('Failed to open schedule meeting. Please try again.');
+      }
+    };
+
+    // Show Google Calendar connection modal
+    function showCalendarConnectionModal(statusMessage) {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+        background: rgba(0,0,0,0.8); z-index: 1000; 
+        display: flex; align-items: center; justify-content: center;
+        backdrop-filter: blur(8px);
+      `;
+      
+      modal.innerHTML = `
+        <div style="background: #1e293b; border-radius: 24px; padding: 40px; max-width: 500px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <div style="font-size: 3rem; margin-bottom: 16px;">📅</div>
+            <h2 style="margin: 0 0 12px 0; color: #fff; font-size: 1.5rem;">Connect Google Calendar</h2>
+            <p style="color: #94a3b8; margin: 0;">${statusMessage || 'To schedule meetings, you need to connect your Google Calendar account.'}</p>
+            <div style="background: #374151; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: left;">
+              <h4 style="margin: 0 0 8px 0; color: #22d3ee; font-size: 14px;">📋 What this allows:</h4>
+              <ul style="margin: 0; padding-left: 16px; color: #94a3b8; font-size: 13px; line-height: 1.5;">
+                <li>Create calendar events for your HangO meetings</li>
+                <li>Send invitations to meeting participants</li>
+                <li>Sync meeting times with your existing calendar</li>
+                <li>Get meeting reminders and notifications</li>
+              </ul>
+              <p style="margin: 12px 0 0 0; color: #fbbf24; font-size: 12px;">
+                <strong>Note:</strong> This only accesses your calendar, not your other Google data.
+              </p>
+            </div>
+          </div>
+          
+          <div style="display: flex; gap: 16px; justify-content: center;">
+            <button id="connectCalendar" style="
+              background: linear-gradient(135deg, #4285f4, #34a853);
+              color: white; border: none; padding: 12px 24px; 
+              border-radius: 12px; font-weight: 600; cursor: pointer;
+              display: flex; align-items: center; gap: 8px;
+              transition: all 0.2s ease;
+            ">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              Connect Google Calendar
+            </button>
+            <button onclick="this.parentElement.parentElement.parentElement.remove()" style="
+              background: #374151; color: #9ca3af; border: none; 
+              padding: 12px 24px; border-radius: 12px; cursor: pointer;
+            ">Cancel</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      // Handle Google Calendar connection
+      modal.querySelector('#connectCalendar').onclick = async () => {
+        try {
+          const response = await fetch('/api/calendar/auth-url');
+          const data = await response.json();
+          
+          if (data.authUrl) {
+            window.location.href = data.authUrl;
+          } else {
+            throw new Error('Failed to get authorization URL');
+          }
+        } catch (error) {
+          console.error('Calendar connection error:', error);
+          toast('Failed to connect calendar. Please try again.');
+        }
+      };
+      
+      modal.onclick = (e) => {
+        if (e.target === modal) modal.remove();
+      };
+    }
+
+    // Show schedule meeting modal
+    async function showScheduleMeetingModal() {
+      // Get time suggestions
+      const suggestionsResponse = await fetch('/api/calendar/time-suggestions?duration=60');
+      const { suggestions } = await suggestionsResponse.json();
+      
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+        background: rgba(0,0,0,0.8); z-index: 1000; 
+        display: flex; align-items: center; justify-content: center;
+        backdrop-filter: blur(8px); overflow-y: auto; padding: 20px;
+      `;
+      
+      modal.innerHTML = `
+        <div style="background: #1e293b; border-radius: 24px; padding: 40px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <div style="font-size: 3rem; margin-bottom: 16px;">📅</div>
+            <h2 style="margin: 0 0 12px 0; color: #fff; font-size: 1.5rem;">Schedule Meeting</h2>
+            <p style="color: #94a3b8; margin: 0;">Create a meeting and add it to your Google Calendar.</p>
+          </div>
+          
+          <form id="scheduleMeetingForm" style="display: flex; flex-direction: column; gap: 20px;">
+            <div>
+              <label style="color: #e2e8f0; font-weight: 600; margin-bottom: 8px; display: block;">Meeting Title</label>
+              <input type="text" id="meetingTitle" placeholder="Enter meeting title" required style="
+                width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #374151;
+                background: #374151; color: #fff; font-size: 14px;
+              ">
+            </div>
+            
+            <div>
+              <label style="color: #e2e8f0; font-weight: 600; margin-bottom: 8px; display: block;">Description (Optional)</label>
+              <textarea id="meetingDescription" placeholder="What's this meeting about?" rows="3" style="
+                width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #374151;
+                background: #374151; color: #fff; font-size: 14px; resize: vertical;
+              "></textarea>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <div>
+                <label style="color: #e2e8f0; font-weight: 600; margin-bottom: 8px; display: block;">Start Date & Time</label>
+                <input type="datetime-local" id="startDateTime" required style="
+                  width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #374151;
+                  background: #374151; color: #fff; font-size: 14px;
+                ">
+              </div>
+              <div>
+                <label style="color: #e2e8f0; font-weight: 600; margin-bottom: 8px; display: block;">End Date & Time</label>
+                <input type="datetime-local" id="endDateTime" required style="
+                  width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #374151;
+                  background: #374151; color: #fff; font-size: 14px;
+                ">
+              </div>
+            </div>
+            
+            <div>
+              <label style="color: #e2e8f0; font-weight: 600; margin-bottom: 8px; display: block;">
+                Quick Time Suggestions
+                <span style="color: #94a3b8; font-weight: 400; font-size: 12px;">(Click to use)</span>
+              </label>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+                ${suggestions.map(suggestion => `
+                  <button type="button" class="time-suggestion" data-start="${suggestion.start}" data-end="${suggestion.end}" style="
+                    background: #374151; color: #e2e8f0; border: 1px solid #4b5563; 
+                    padding: 8px 12px; border-radius: 8px; font-size: 12px; cursor: pointer;
+                    transition: all 0.2s ease;
+                  ">
+                    ${suggestion.label}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+            
+            <div>
+              <label style="color: #e2e8f0; font-weight: 600; margin-bottom: 8px; display: block;">
+                Attendees (Optional)
+                <span style="color: #94a3b8; font-weight: 400; font-size: 12px;">(Enter emails separated by commas)</span>
+              </label>
+              <input type="text" id="attendeeEmails" placeholder="email1@example.com, email2@example.com" style="
+                width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #374151;
+                background: #374151; color: #fff; font-size: 14px;
+              ">
+            </div>
+            
+            <div style="display: flex; gap: 16px; justify-content: flex-end; margin-top: 20px;">
+              <button type="button" onclick="this.closest('.modal-overlay').remove()" style="
+                background: #374151; color: #9ca3af; border: none; 
+                padding: 12px 24px; border-radius: 12px; cursor: pointer;
+              ">Cancel</button>
+              <button type="submit" id="scheduleSubmitBtn" style="
+                background: linear-gradient(135deg, #22c55e, #16a34a);
+                color: white; border: none; padding: 12px 24px; 
+                border-radius: 12px; font-weight: 600; cursor: pointer;
+              ">📅 Schedule Meeting</button>
+            </div>
+          </form>
+        </div>
+      `;
+      
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+      
+      // Set default times (next hour, 1 hour duration)
+      const now = new Date();
+      const startTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+      const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 hour duration
+      
+      const startInput = modal.querySelector('#startDateTime');
+      const endInput = modal.querySelector('#endDateTime');
+      
+      startInput.value = startTime.toISOString().slice(0, 16);
+      endInput.value = endTime.toISOString().slice(0, 16);
+      
+      // Handle time suggestions
+      modal.querySelectorAll('.time-suggestion').forEach(btn => {
+        btn.onclick = () => {
+          const start = btn.dataset.start;
+          const end = btn.dataset.end;
+          
+          startInput.value = new Date(start).toISOString().slice(0, 16);
+          endInput.value = new Date(end).toISOString().slice(0, 16);
+          
+          // Highlight selected suggestion
+          modal.querySelectorAll('.time-suggestion').forEach(b => {
+            b.style.background = '#374151';
+            b.style.color = '#e2e8f0';
+          });
+          btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+          btn.style.color = 'white';
+        };
+        
+        btn.onmouseenter = () => {
+          if (btn.style.background !== 'linear-gradient(135deg, rgb(34, 197, 94), rgb(22, 163, 74))') {
+            btn.style.background = '#4b5563';
+          }
+        };
+        
+        btn.onmouseleave = () => {
+          if (btn.style.background !== 'linear-gradient(135deg, rgb(34, 197, 94), rgb(22, 163, 74))') {
+            btn.style.background = '#374151';
+          }
+        };
+      });
+      
+      // Handle form submission
+      modal.querySelector('#scheduleMeetingForm').onsubmit = async (e) => {
+        e.preventDefault();
+        
+        const submitBtn = modal.querySelector('#scheduleSubmitBtn');
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = '📅 Scheduling...';
+        submitBtn.disabled = true;
+        
+        try {
+          const formData = {
+            title: modal.querySelector('#meetingTitle').value.trim(),
+            description: modal.querySelector('#meetingDescription').value.trim(),
+            startDateTime: new Date(modal.querySelector('#startDateTime').value).toISOString(),
+            endDateTime: new Date(modal.querySelector('#endDateTime').value).toISOString(),
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            attendees: modal.querySelector('#attendeeEmails').value
+              .split(',')
+              .map(email => ({ email: email.trim() }))
+              .filter(attendee => attendee.email)
+          };
+          
+          const response = await fetch('/api/calendar/schedule-meeting', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+          
+          const result = await response.json();
+          
+          if (result.success) {
+            toast('✅ Meeting scheduled successfully! Calendar event created.', 'success');
+            modal.remove();
+            
+            // Show success modal with meeting details
+            showMeetingScheduledModal(result);
+            
+            // Refresh dashboard data
+            loadDashboard();
+          } else {
+            throw new Error(result.error || 'Failed to schedule meeting');
+          }
+          
+        } catch (error) {
+          console.error('Schedule meeting error:', error);
+          toast('❌ Failed to schedule meeting: ' + error.message);
+          submitBtn.textContent = originalText;
+          submitBtn.disabled = false;
+        }
+      };
+      
+      // Auto-update end time when start time changes
+      startInput.onchange = () => {
+        const startTime = new Date(startInput.value);
+        const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 hour duration
+        endInput.value = endTime.toISOString().slice(0, 16);
+      };
+      
+      modal.onclick = (e) => {
+        if (e.target === modal) modal.remove();
+      };
+    }
+
+    // Show meeting scheduled success modal
+    function showMeetingScheduledModal(result) {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+        background: rgba(0,0,0,0.8); z-index: 1000; 
+        display: flex; align-items: center; justify-content: center;
+        backdrop-filter: blur(8px);
+      `;
+      
+      modal.innerHTML = `
+        <div style="background: #1e293b; border-radius: 24px; padding: 40px; max-width: 500px; width: 90%; text-align: center;">
+          <div style="font-size: 4rem; margin-bottom: 20px;">🎉</div>
+          <h2 style="margin: 0 0 16px 0; color: #22c55e; font-size: 1.5rem;">Meeting Scheduled!</h2>
+          <p style="color: #94a3b8; margin-bottom: 24px;">Your meeting has been created and added to your Google Calendar.</p>
+          
+          <div style="background: #374151; border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: left;">
+            <div style="color: #e2e8f0; margin-bottom: 8px;"><strong>Meeting Code:</strong> ${result.meeting.code}</div>
+            <div style="color: #e2e8f0; margin-bottom: 8px;"><strong>Meeting URL:</strong></div>
+            <div style="color: #22d3ee; word-break: break-all; font-size: 14px; margin-bottom: 16px;">${result.meeting.url}</div>
+            ${result.calendarEvent.url ? `<div style="color: #e2e8f0; margin-bottom: 8px;"><strong>Calendar Event:</strong></div>
+            <a href="${result.calendarEvent.url}" target="_blank" style="color: #22d3ee; text-decoration: none; font-size: 14px;">View in Google Calendar →</a>` : ''}
+          </div>
+          
+          <div style="display: flex; gap: 12px; justify-content: center;">
+            <button onclick="navigator.clipboard.writeText('${result.meeting.url}').then(() => toast('Link copied!'))" style="
+              background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+              color: white; border: none; padding: 10px 20px; 
+              border-radius: 8px; cursor: pointer; font-size: 14px;
+            ">📋 Copy Link</button>
+            <button onclick="this.parentElement.parentElement.parentElement.remove()" style="
+              background: #374151; color: #9ca3af; border: none; 
+              padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px;
+            ">Close</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      modal.onclick = (e) => {
+        if (e.target === modal) modal.remove();
+      };
+    }
+
+    // Update calendar connection status display
+    async function updateCalendarStatus() {
+      const statusElement = document.getElementById('calendarStatus');
+      const iconElement = document.getElementById('calendarIcon');
+      const textElement = document.getElementById('calendarStatusText');
+      const detailElement = document.getElementById('calendarStatusDetail');
+      
+      try {
+        const response = await fetch('/api/calendar/status');
+        const status = await response.json();
+        
+        if (status.connected) {
+          statusElement.style.background = 'rgba(34, 197, 94, 0.2)';
+          statusElement.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+          statusElement.style.color = '#22c55e';
+          iconElement.textContent = '✅';
+          textElement.textContent = 'Calendar Connected';
+          detailElement.textContent = 'Ready to schedule meetings';
+        } else if (status.configured) {
+          statusElement.style.background = 'rgba(251, 191, 36, 0.2)';
+          statusElement.style.borderColor = 'rgba(251, 191, 36, 0.4)';
+          statusElement.style.color = '#fbbf24';
+          iconElement.textContent = '⚠️';
+          textElement.textContent = 'Calendar Not Connected';
+          detailElement.textContent = 'Click Schedule Meeting to connect';
+        } else {
+          statusElement.style.background = 'rgba(239, 68, 68, 0.2)';
+          statusElement.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          statusElement.style.color = '#ef4444';
+          iconElement.textContent = '❌';
+          textElement.textContent = 'Calendar Not Available';
+          detailElement.textContent = 'API not configured';
+        }
+      } catch (error) {
+        statusElement.style.background = 'rgba(107, 114, 128, 0.2)';
+        statusElement.style.borderColor = 'rgba(107, 114, 128, 0.3)';
+        statusElement.style.color = '#9ca3af';
+        iconElement.textContent = '📅';
+        textElement.textContent = 'Calendar Status Unknown';
+        detailElement.textContent = 'Connection error';
+      }
+    }
+
+    // Check for calendar connection status on page load
+    window.addEventListener('load', () => {
+      // Update calendar status
+      updateCalendarStatus();
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('calendar') === 'connected') {
+        toast('✅ Google Calendar connected successfully!', 'success');
+        // Remove the parameter from URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Refresh calendar status
+        setTimeout(updateCalendarStatus, 1000);
+      } else if (urlParams.get('calendar') === 'error') {
+        toast('❌ Failed to connect Google Calendar. Please try again.');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    });
   </script>
 </body>
 </html>

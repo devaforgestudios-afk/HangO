@@ -37,18 +37,25 @@ passport.use(new GitHubStrategy({
     };
     
     try {
-      user = await airtable.createOAuthUser(userData);
-      console.log('✅ New GitHub user created:', user.username);
+      const result = await airtable.createOAuthUser(userData);
+      user = result.user;
+      const isNewUser = result.isNewUser;
       
-      // Send welcome email for new users
-      if (user.email) {
-        try {
-          await sendWelcomeEmail(user.email, user.username, 'github');
-          console.log('📧 Welcome email sent to:', user.email);
-        } catch (emailError) {
-          console.error('📧 Failed to send welcome email:', emailError.message);
-          // Continue with authentication even if email fails
+      if (isNewUser) {
+        console.log('✅ New GitHub user created:', user.username);
+        
+        // Send welcome email for new users only
+        if (user.email) {
+          try {
+            await sendWelcomeEmail(user.email, user.username, 'github');
+            console.log('📧 Welcome email sent to:', user.email);
+          } catch (emailError) {
+            console.error('📧 Failed to send welcome email:', emailError.message);
+            // Continue with authentication even if email fails
+          }
         }
+      } else {
+        console.log('✅ Existing GitHub user logged in:', user.username);
       }
       
       return done(null, user);
@@ -112,18 +119,25 @@ passport.use(new GoogleStrategy({
     };
     
     try {
-      user = await airtable.createOAuthUser(userData);
-      console.log('✅ New Google user created:', user.username);
+      const result = await airtable.createOAuthUser(userData);
+      user = result.user;
+      const isNewUser = result.isNewUser;
       
-      // Send welcome email for new users
-      if (user.email) {
-        try {
-          await sendWelcomeEmail(user.email, user.username, 'google');
-          console.log('📧 Welcome email sent to:', user.email);
-        } catch (emailError) {
-          console.error('📧 Failed to send welcome email:', emailError.message);
-          // Continue with authentication even if email fails
+      if (isNewUser) {
+        console.log('✅ New Google user created:', user.username);
+        
+        // Send welcome email for new users only
+        if (user.email) {
+          try {
+            await sendWelcomeEmail(user.email, user.username, 'google');
+            console.log('📧 Welcome email sent to:', user.email);
+          } catch (emailError) {
+            console.error('📧 Failed to send welcome email:', emailError.message);
+            // Continue with authentication even if email fails
+          }
         }
+      } else {
+        console.log('✅ Existing Google user logged in:', user.username);
       }
       
       return done(null, user);

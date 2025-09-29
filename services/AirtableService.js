@@ -153,7 +153,7 @@ class AirtableService {
       let user = await this.findUserByProvider(provider, provider_id);
       if (user) {
         console.log(`✅ Existing ${provider} user found with same provider ID:`, user.username);
-        return user;
+        return { user, isNewUser: false };
       }
 
       if (email) {
@@ -179,7 +179,7 @@ class AirtableService {
         // Check if it's the same user trying to re-authenticate
         if (existingUserByUsername.provider === provider && existingUserByUsername.provider_id === provider_id) {
           console.log(`✅ Found existing user with same ${provider} credentials:`, existingUserByUsername.username);
-          return existingUserByUsername;
+          return { user: existingUserByUsername, isNewUser: false };
         }
         
         // Generate a unique username by appending provider and numbers
@@ -236,7 +236,7 @@ class AirtableService {
       };
 
       console.log(`✅ New ${provider} user created:`, createdUser.username);
-      return createdUser;
+      return { user: createdUser, isNewUser: true };
 
     } catch (error) {
       console.error('Airtable create OAuth user error:', error);

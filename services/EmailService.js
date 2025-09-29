@@ -55,7 +55,7 @@ async function sendWelcomeEmail(to, username, provider) {
           </div>
           
           <div style="text-align: center; margin: 30px 0;">
-            <a href="http://localhost:3000/dashboard.html" 
+            <a href="${process.env.DOMAIN || 'http://hango.onrender.com'}/dashboard.html" 
                style="background: linear-gradient(135deg, #22d3ee, #a78bfa); 
                       color: white; 
                       text-decoration: none; 
@@ -82,7 +82,7 @@ async function sendWelcomeEmail(to, username, provider) {
           
           <p style="font-size: 14px; color: #6b7280; text-align: center; margin: 0;">
             Need help? Reply to this email or visit our 
-            <a href="http://localhost:3000" style="color: #22d3ee;">support center</a>.
+            <a href="${process.env.DOMAIN || 'http://hango.onrender.com'}" style="color: #22d3ee;">support center</a>.
           </p>
           
           <p style="font-size: 14px; color: #6b7280; text-align: center; margin: 10px 0 0 0;">
@@ -158,7 +158,7 @@ async function sendPasswordResetEmail(to, username, resetUrl) {
           
           <p style="font-size: 14px; color: #6b7280; text-align: center; margin: 20px 0 0 0;">
             Need help? Reply to this email or visit our 
-            <a href="http://localhost:3000" style="color: #22d3ee;">support center</a>.
+            <a href="${process.env.DOMAIN || 'http://hango.onrender.com'}" style="color: #22d3ee;">support center</a>.
           </p>
           
           <p style="font-size: 14px; color: #6b7280; text-align: center; margin: 10px 0 0 0;">

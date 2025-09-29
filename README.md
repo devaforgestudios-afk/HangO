@@ -98,12 +98,12 @@ SESSION_SECRET=your-super-secret-session-key
 AIRTABLE_API_KEY=your-airtable-api-key
 AIRTABLE_BASE_ID=your-airtable-base-id
 
-# Email Configuration (Gmail example)
+# Email Configuration 
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
 
-# GitHub OAuth (Optional)
+# GitHub OAuth
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
@@ -112,6 +112,10 @@ GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
+
+# Google Calender Auth
+GOOGLE_CALENDAR_CLIENT_ID=your_calendar_client_id_here
+GOOGLE_CALENDAR_CLIENT_SECRET=your_calendar_client_secret_here
 ```
 
 ### 4. **Airtable Setup**
@@ -158,10 +162,9 @@ Create a **Meetings** table with:
 
 ### **Starting the Application**
 ```bash
-# Development mode (with auto-restart)
+
 npm run dev
 
-# Production mode
 npm start
 ```
 

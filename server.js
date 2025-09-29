@@ -8,6 +8,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const AirtableService = require('./services/AirtableService');
 const MeetingService = require('./services/MeetingService');
+const GoogleCalendarService = require('./services/GoogleCalendarService');
 const { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetEmail } = require('./services/EmailService');
 
 const app = express();
@@ -21,9 +22,10 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-// Initialize Airtable with error handling
+// Initialize services
 let airtable = null;
 let airtableConnected = false;
+let googleCalendar = null;
 
 try {
   airtable = new AirtableService();
@@ -164,6 +166,226 @@ passport.deserializeUser(async (id, done) => {
 
 // Auth routes (must be after session and passport initialization)
 app.use('/auth', require('./routes/auth'));
+
+// Google Calendar Integration Routes
+
+// Get calendar connection status
+app.get('/api/calendar/status', (req, res) => {
+  const tokens = req.session.googleCalendarTokens;
+  const isConfigured = !!(process.env.GOOGLE_CALENDAR_CLIENT_ID && process.env.GOOGLE_CALENDAR_CLIENT_SECRET);
+  
+  res.json({
+    connected: !!(tokens && tokens.access_token),
+    configured: isConfigured
+  });
+});
+
+// Get Google Calendar authorization URL
+app.get('/api/calendar/auth-url', (req, res) => {
+  try {
+    if (!googleCalendar || !googleCalendar.isConfigured) {
+      return res.status(503).json({ 
+        error: 'Google Calendar not configured',
+        message: 'Please configure Google OAuth credentials' 
+      });
+    }
+    
+    const authUrl = googleCalendar.getAuthUrl();
+    res.json({ authUrl });
+    
+  } catch (error) {
+    console.error('Calendar auth URL error:', error);
+    res.status(500).json({ error: 'Failed to generate authorization URL' });
+  }
+});
+
+// Handle Google Calendar OAuth callback
+app.get('/api/calendar/oauth/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    
+    if (!code) {
+      return res.status(400).json({ error: 'Authorization code required' });
+    }
+
+    if (!googleCalendar || !googleCalendar.isConfigured) {
+      return res.status(503).json({ error: 'Google Calendar not configured' });
+    }
+
+    // Exchange code for tokens
+    const tokens = await googleCalendar.setCredentials(code);
+    
+    // Store calendar tokens separately from general Google OAuth tokens
+    req.session.googleCalendarTokens = tokens;
+    
+    // Redirect to dashboard with success message
+    res.redirect('/dashboard.html?calendar=connected');
+    
+  } catch (error) {
+    console.error('Calendar OAuth callback error:', error);
+    res.redirect('/dashboard.html?calendar=error');
+  }
+});
+
+// Create scheduled meeting
+app.post('/api/calendar/schedule-meeting', async (req, res) => {
+  try {
+    if (!googleCalendar || !googleCalendar.isConfigured) {
+      return res.status(503).json({ error: 'Google Calendar not configured' });
+    }
+
+    // Check for calendar-specific tokens first, then fallback to general Google tokens
+    const userTokens = req.session.googleCalendarTokens || req.session.googleTokens;
+    if (!userTokens) {
+      return res.status(401).json({ error: 'Calendar not connected. Please authorize Google Calendar access first.' });
+    }
+
+    const { title, description, startDateTime, endDateTime, timeZone, attendees } = req.body;
+
+    // Generate meeting code and URL
+    const meetingCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const meetingUrl = `${process.env.DOMAIN || 'http://localhost:3000'}/meet.html?code=${meetingCode}`;
+
+    // Create meeting in database
+    const meetingData = {
+      meeting_code: meetingCode,
+      title: title || 'HangO Meeting',
+      description: description || '',
+      scheduled_time: startDateTime,
+      created_by: req.session.user?.id || 'anonymous',
+      status: 'scheduled',
+      participants: JSON.stringify([])
+    };
+
+    let meeting;
+    if (airtable && airtableConnected) {
+      meeting = await airtable.createMeeting(meetingData);
+    }
+
+    // Prepare calendar event data
+    const eventData = {
+      title: title || 'HangO Meeting',
+      description,
+      startDateTime,
+      endDateTime,
+      timeZone,
+      attendees: attendees || [],
+      meetingCode,
+      meetingUrl,
+      organizer: req.session.user?.name || 'HangO User'
+    };
+
+    // Create calendar event
+    const calendarEvent = await googleCalendar.createMeetingEvent(eventData, userTokens);
+
+    // Update meeting with calendar event ID
+    if (meeting && calendarEvent.eventId) {
+      meeting.calendar_event_id = calendarEvent.eventId;
+    }
+
+    res.json({
+      success: true,
+      meeting: {
+        code: meetingCode,
+        url: meetingUrl,
+        ...meetingData
+      },
+      calendarEvent: {
+        id: calendarEvent.eventId,
+        url: calendarEvent.eventUrl,
+        hangoutLink: calendarEvent.hangoutLink
+      }
+    });
+
+  } catch (error) {
+    console.error('Schedule meeting error:', error);
+    res.status(500).json({ error: error.message || 'Failed to schedule meeting' });
+  }
+});
+
+// Get upcoming scheduled meetings
+app.get('/api/calendar/upcoming-meetings', async (req, res) => {
+  try {
+    if (!googleCalendar || !googleCalendar.isConfigured) {
+      return res.status(503).json({ error: 'Google Calendar not configured' });
+    }
+
+    // Check for calendar-specific tokens first, then fallback to general Google tokens
+    const userTokens = req.session.googleCalendarTokens || req.session.googleTokens;
+    if (!userTokens) {
+      return res.status(401).json({ error: 'Calendar not connected' });
+    }
+
+    // Refresh token if needed
+    const refreshedTokens = await googleCalendar.refreshTokenIfNeeded(userTokens);
+    if (refreshedTokens !== userTokens) {
+      // Update the correct token store
+      if (req.session.googleCalendarTokens) {
+        req.session.googleCalendarTokens = refreshedTokens;
+      } else {
+        req.session.googleTokens = refreshedTokens;
+      }
+    }
+
+    const meetings = await googleCalendar.getUpcomingMeetings(refreshedTokens);
+    res.json({ meetings });
+
+  } catch (error) {
+    console.error('Get upcoming meetings error:', error);
+    res.status(500).json({ error: 'Failed to retrieve meetings' });
+  }
+});
+
+// Get available meeting time suggestions
+app.get('/api/calendar/time-suggestions', (req, res) => {
+  try {
+    const duration = parseInt(req.query.duration) || 60;
+    const suggestions = googleCalendar.generateMeetingTimes(duration);
+    res.json({ suggestions });
+    
+  } catch (error) {
+    console.error('Time suggestions error:', error);
+    res.status(500).json({ error: 'Failed to generate time suggestions' });
+  }
+});
+
+// Check calendar connection status
+app.get('/api/calendar/status', async (req, res) => {
+  try {
+    if (!googleCalendar || !googleCalendar.isConfigured) {
+      return res.json({ 
+        connected: false, 
+        configured: false,
+        message: 'Google Calendar API not configured. Please set up GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET in your environment variables.'
+      });
+    }
+
+    const userTokens = req.session.googleCalendarTokens || req.session.googleTokens;
+    if (!userTokens) {
+      return res.json({ 
+        connected: false, 
+        configured: true,
+        message: 'Calendar access not authorized. Click "Schedule Meeting" to connect your Google Calendar.'
+      });
+    }
+
+    const isValid = await googleCalendar.validateAccess(userTokens);
+    res.json({ 
+      connected: isValid, 
+      configured: true,
+      message: isValid ? 'Google Calendar connected and ready' : 'Calendar authorization expired. Please reconnect.'
+    });
+
+  } catch (error) {
+    console.error('Calendar status check error:', error);
+    res.json({ 
+      connected: false, 
+      configured: true, 
+      error: error.message,
+      message: 'Error checking calendar connection'
+    });
+  }
+});
 
 // WebSocket meeting functionality
 function setupMeetingWebSocket(io, airtable) {
@@ -309,6 +531,21 @@ function setupMeetingWebSocket(io, airtable) {
       });
     });
 
+    // Handle screen sharing events
+    socket.on('screen-share', (data) => {
+      const session = userSessions.get(socket.id);
+      if (session) {
+        console.log(`🖥️ Screen share ${data.action} from ${session.userInfo.name}`);
+        
+        // Broadcast screen share status to other participants
+        socket.to(session.meetingCode).emit('participant-screen-share', {
+          participantId: socket.id,
+          participantName: session.userInfo.name,
+          action: data.action
+        });
+      }
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
       console.log('🔌 Client disconnected:', socket.id);
@@ -383,7 +620,8 @@ app.post('/api/user/register', async (req, res) => {
     console.log('✅ User created successfully:', newUser.id);
 
     // Send verification email
-    const verificationUrl = `${req.protocol}://${req.get('host')}/api/user/verify?token=${newUser.verification_token}`;
+    const baseUrl = process.env.DOMAIN || `${req.protocol}://${req.get('host')}`;
+    const verificationUrl = `${baseUrl}/api/user/verify?token=${newUser.verification_token}`;
     await sendVerificationEmail(newUser.email, newUser.username, verificationUrl);
     console.log('✉️ Verification email sent to:', newUser.email);
 
@@ -714,8 +952,8 @@ app.post('/api/user/forgot-password', async (req, res) => {
     // Generate reset token
     const resetData = await airtable.generatePasswordResetToken(email.trim().toLowerCase());
     
-    // Create reset URL (adjust domain in production)
-    const resetUrl = `http://localhost:3000/reset-password?token=${resetData.token}`;
+    // Create reset URL
+    const resetUrl = `${process.env.DOMAIN || 'http://localhost:3000'}/reset-password?token=${resetData.token}`;
     
     // Send password reset email
     await sendPasswordResetEmail(resetData.user.email, resetData.user.username, resetUrl);
@@ -1177,6 +1415,9 @@ const startServer = async () => {
         airtableConnected = false;
       }
     }
+    
+    // Initialize Google Calendar service
+    googleCalendar = new GoogleCalendarService();
     
     // Initialize real-time meeting service
     const meetingService = new MeetingService(io, airtable);
