@@ -263,7 +263,6 @@ SESSION_SECRET=super-secure-production-secret
 - **Heroku**: Add buildpack and configure environment variables
 - **Vercel**: Use serverless functions for API routes
 - **DigitalOcean**: Deploy on droplet with PM2 for process management
-- **AWS**: Use EC2 with Load Balancer for scaling
 
 ## 🐛 Troubleshooting
 
@@ -288,22 +287,4 @@ Enable debug logging by setting `NODE_ENV=development` in `.env`
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🎉 Acknowledgments
 
-- **WebRTC Community** for excellent documentation and examples
-- **Socket.IO Team** for real-time communication framework
-- **Airtable** for providing an excellent database-as-a-service platform
-- **Passport.js** for comprehensive authentication solutions
-
-## 📞 Support
-
-For support and questions:
-- Create an issue on GitHub
-- Email: support@hango-app.com
-- Documentation: [Wiki](https://github.com/your-username/hango/wiki)
-
----
-
-**Made with ❤️ by the HangO Team**
-
-*Experience seamless video conferencing with HangO - where connections happen naturally.*
